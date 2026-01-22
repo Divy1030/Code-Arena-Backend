@@ -22,6 +22,14 @@ const userSchema = new Schema<IUser>(
     password: {
       type: String,
     },
+    isGoogleAccount: {
+      type: Boolean,
+      default: false,
+    },
+    hasPassword: {
+      type: Boolean,
+      default: false,
+    },
     online: {
       type: Boolean,
       default: false,
@@ -64,11 +72,11 @@ const userSchema = new Schema<IUser>(
       {
         contestId: { type: Schema.Types.ObjectId, ref: "Contest" },
         rank: Number,
-        score: {type: Number, default: 0},
+        score: { type: Number, default: 0 },
         contestProblems: [
           {
             problemId: { type: Schema.Types.ObjectId, ref: "Problem" },
-            score: {type: Number, default: 0},
+            score: { type: Number, default: 0 },
             submissionTime: Date,
             submissionStatus: {
               type: String,
@@ -101,7 +109,12 @@ const userSchema = new Schema<IUser>(
 
 userSchema.pre<IUser>("save", async function (next) {
   if (!this.isModified("password")) return next();
-  this.password = await bcrypt.hash(this.password, 10);
+
+  if (this.password) {
+    this.password = await bcrypt.hash(this.password, 10);
+    this.hasPassword = true;
+  }
+
   next();
 });
 
@@ -131,11 +144,10 @@ userSchema.methods.isPasswordCorrect = async function (
 
 userSchema.methods.generateAccessToken = function (): string {
   const secret = process.env.ACCESS_TOKEN_SECRET;
-  // console.log(secret);
   if (!secret) {
     throw new Error("ACCESS_TOKEN_SECRET is not defined");
   }
-  //merging with main
+
   return jwt.sign(
     {
       _id: this._id,
@@ -154,8 +166,6 @@ userSchema.methods.generateAccessToken = function (): string {
 
 userSchema.methods.generateRefreshToken = function (): string {
   const secret = process.env.REFRESH_TOKEN_SECRET;
-  // console.log(parseInt(process.env.REFRESH_TOKEN_EXPIRY || "0"));
-  // console.log(secret);
   if (!secret) {
     throw new Error("REFRESH_TOKEN_SECRET is not defined");
   }

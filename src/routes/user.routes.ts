@@ -12,7 +12,13 @@ import {
   googleLogin,
   getManageableContests,
   updateProfilePicture,
-  getUserById, // Add this import
+  getUserById,
+  followAndUnfollow,
+  searchFriendByName,
+  suggestedUsersToFollow,
+  getProfileOfUser,
+  createPasswordForGoogleUser,
+  changePassword, // Add this import
 } from "../controllers/user.controllers.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import {
@@ -36,6 +42,7 @@ router.route("/google").post(googleLogin);
 router.route("/logout").post(verifyJWT, logoutUser);
 router.route("/refresh-token").post(refreshAccessToken);
 router.route("/get-user-data").get(verifyJWT, getUserData);
+router.route("/change-password").post(verifyJWT, changePassword); // Add this route
 router.get("/manageable-contests", verifyJWT, getManageableContests);
 router
   .route("/profile-picture")
@@ -46,7 +53,16 @@ router
   );
 
 // Add new route to get user by ID
-router.route("/current").get(verifyJWT, getUserData); // New route for current user
-router.route("/:userId").get(verifyJWT, getUserById); // Route for getting user by ID
+router.route("/current").get(verifyJWT, getUserData);
+router.route("/:userId").get(verifyJWT, getUserById);
+
+// Add the missing social feature routes
+router.route("/follow").post(verifyJWT, followAndUnfollow);
+router.route("/search-friends").post(verifyJWT, searchFriendByName);
+router.route("/suggested-users").get(verifyJWT, suggestedUsersToFollow);
+router.route("/profile/:userId").get(verifyJWT, getProfileOfUser);
+
+// Add new route for Google users to create password
+router.route("/create-password").post(verifyJWT, createPasswordForGoogleUser);
 
 export default router;

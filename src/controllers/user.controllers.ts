@@ -4,6 +4,13 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { IUser } from "../types/user.types.js";
 import User from "../models/user.model.js";
+
+// Extend Express Request to include user property
+declare module 'express-serve-static-core' {
+  interface Request {
+    user?: IUser;
+  }
+}
 import { generateAccessAndRefreshTokens } from "../utils/tools.js";
 import jwt from "jsonwebtoken";
 import { sendOtpEmail } from "../utils/sendMail.js";
@@ -27,6 +34,7 @@ const otpStore = new Map<
   }
 >();
 
+// Update the registerUser function
 const registerUser = asyncHandler(async (req: Request, res: Response) => {
   const { username, email, password } = req.body;
 
@@ -76,6 +84,7 @@ const registerUser = asyncHandler(async (req: Request, res: Response) => {
     );
 });
 
+// Update verifyLoginOTP to set hasPassword
 const verifyLoginOTP = asyncHandler(async (req: Request, res: Response) => {
   const { email, otp } = req.body;
 
@@ -104,7 +113,13 @@ const verifyLoginOTP = asyncHandler(async (req: Request, res: Response) => {
   const { username, password } = stored.user;
 
   try {
-    const newUser = await User.create({ username, email, password });
+    const newUser = await User.create({
+      username,
+      email,
+      password,
+      isGoogleAccount: false,
+      hasPassword: true,
+    });
     otpStore.delete(email);
 
     const user = await User.findById(newUser._id).select(
@@ -565,6 +580,7 @@ const getUserData = asyncHandler(async (req: Request, res: Response) => {
     .json(new ApiResponse(200, user[0], "User data retrieved successfully"));
 });
 
+// Update googleLogin to set the Google flags
 const googleLogin = asyncHandler(async (req: Request, res: Response) => {
   const idToken = req.body.idToken;
   if (!idToken) {
@@ -582,26 +598,111 @@ const googleLogin = asyncHandler(async (req: Request, res: Response) => {
   let user = await User.findOne({ email });
 
   if (!user) {
+    const generateUniqueUsername = async (baseName: string): Promise<string> => {
+      let baseUsername = baseName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      
+      if (baseUsername.length < 3) {
+        baseUsername = baseUsername + 'user';
+      }
+      
+      let username = baseUsername;
+      let counter = 1;
+      
+      while (await User.findOne({ username })) {
+        username = `${baseUsername}${counter}`;
+        counter++;
+      }
+      
+      return username;
+    };
+
+    const username = await generateUniqueUsername(name || email.split('@')[0]);
+
     user = await User.create({
-      username: name,
+      username,
       email,
       profile: { avatarUrl: picture },
-      password: "",
+      password: "", // Empty password initially
+      isGoogleAccount: true,
+      hasPassword: false,
     });
   }
 
-  const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
-    user._id!.toString()
-  );
+  try {
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(
+      user._id!.toString()
+    );
 
-  const message =
-    user.createdAt.getTime() === user.updatedAt.getTime()
-      ? "User registered successfully"
-      : "User logged in successfully";
+    const loggedInUser = await User.findById(user._id).select(
+      "-password -refreshToken -contestsCreated"
+    );
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+    };
+
+    const message =
+      user.createdAt.getTime() === user.updatedAt.getTime()
+        ? "User registered successfully"
+        : "User logged in successfully";
+
+    res
+      .cookie("accessToken", accessToken, cookieOptions)
+      .cookie("refreshToken", refreshToken, cookieOptions)
+      .json(
+        new ApiResponse(
+          200,
+          { user: loggedInUser, accessToken, refreshToken },
+          message
+        )
+      );
+  } catch (error) {
+    console.error("Error during Google login:", error);
+    throw new ApiError(
+      500,
+      "An error occurred during Google login. Please try again."
+    );
+  }
+});
+
+// Add new function to create password for Google users
+const createPasswordForGoogleUser = asyncHandler(async (req: Request, res: Response) => {
+  const { newPassword } = req.body;
+  const userId = req.user?._id;
+
+  if (!userId) {
+    throw new ApiError(401, "User not authenticated");
+  }
+
+  if (!newPassword) {
+    throw new ApiError(400, "New password is required");
+  }
+
+  if (newPassword.length < 6) {
+    throw new ApiError(400, "Password must be at least 6 characters long");
+  }
+
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (!user.isGoogleAccount) {
+    throw new ApiError(400, "This feature is only available for Google accounts");
+  }
+
+  if (user.hasPassword) {
+    throw new ApiError(400, "Password already exists. Use change password instead.");
+  }
+
+  user.password = newPassword;
+  user.hasPassword = true;
+  await user.save();
 
   res
     .status(200)
-    .json(new ApiResponse(200, { user, accessToken, refreshToken }, message));
+    .json(new ApiResponse(200, {}, "Password created successfully"));
 });
 
 const getManageableContests = asyncHandler(
@@ -740,95 +841,208 @@ const updateProfilePicture = asyncHandler(
 );
 
 const followAndUnfollow = asyncHandler(async (req: Request, res: Response) => {
-  //TODO:
-  //1. we will get the user profile from the request body
-  //2. identify the user in the database
-  //3. identify the user we are now about to follow
-  //4. update the followers list of the user we are about to follow
-  //5. update the following list of the user we are following from
-  //6. return the updated user profile
-
-  const userId = (req as any).user._id;
-  const userThatIsFollowing = await User.findById(userId);
-
   const { idOfWhomWeAreFollowing } = req.body;
-  const userThatIsFollowed = await User.findById(idOfWhomWeAreFollowing);
+  const userId = (req as any).user?._id;
 
-  if (!userThatIsFollowing || !userThatIsFollowed) {
-    throw new ApiError(404, "User not found");
+  console.log('Follow/Unfollow - Current User ID:', userId);
+  console.log('Follow/Unfollow - Target User ID:', idOfWhomWeAreFollowing);
+
+  if (!userId) {
+    throw new ApiError(401, "User not authenticated");
   }
 
-  // Check if the user is already following the target user
-  const isFollowing = userThatIsFollowing.following.includes(
-    idOfWhomWeAreFollowing
-  );
-  if (isFollowing) {
-    // If already following, unfollow the user
-    userThatIsFollowing.following = userThatIsFollowing.following.filter(
-      (id: any) => id.toString() !== idOfWhomWeAreFollowing.toString()
-    );
-    userThatIsFollowed.followers = userThatIsFollowed.followers.filter(
-      (id: any) => id.toString() !== userId.toString()
-    );
+  if (!idOfWhomWeAreFollowing) {
+    throw new ApiError(400, "Target user ID is required");
+  }
+
+  // Validate both user IDs
+  const currentUserIdString = userId.toString();
+  const targetUserIdString = idOfWhomWeAreFollowing.toString();
+
+  if (!mongoose.Types.ObjectId.isValid(currentUserIdString) || 
+      !mongoose.Types.ObjectId.isValid(targetUserIdString)) {
+    throw new ApiError(400, "Invalid user ID format");
+  }
+
+  if (currentUserIdString === targetUserIdString) {
+    throw new ApiError(400, "Cannot follow yourself");
+  }
+
+  // Check if target user exists
+  const targetUser = await User.findById(targetUserIdString);
+  if (!targetUser) {
+    throw new ApiError(404, "Target user not found");
+  }
+
+  const currentUser = await User.findById(currentUserIdString);
+  if (!currentUser) {
+    throw new ApiError(404, "Current user not found");
+  }
+
+  // Check if already following
+  const isAlreadyFollowing = currentUser.following.some((f: any) => {
+    const followingId = f.userId ? f.userId.toString() : f.toString();
+    return followingId === targetUserIdString;
+  });
+
+  if (isAlreadyFollowing) {
+    // Unfollow
+    currentUser.following = currentUser.following.filter((f: any) => {
+      const followingId = f.userId ? f.userId.toString() : f.toString();
+      return followingId !== targetUserIdString;
+    });
+
+    targetUser.followers = targetUser.followers.filter((f: any) => {
+      const followerId = f.userId ? f.userId.toString() : f.toString();
+      return followerId !== currentUserIdString;
+    });
+
+    await currentUser.save();
+    await targetUser.save();
+
+    res.status(200).json(new ApiResponse(200, {}, "Unfollowed successfully"));
   } else {
-    // If not following, follow the user
-    userThatIsFollowing.following.push(idOfWhomWeAreFollowing);
-    userThatIsFollowed.followers.push(userId);
+    // Follow
+    currentUser.following.push({ userId: targetUserIdString, followedAt: new Date() });
+    targetUser.followers.push({ userId: currentUserIdString, followedAt: new Date() });
+
+    await currentUser.save();
+    await targetUser.save();
+
+    res.status(200).json(new ApiResponse(200, {}, "Followed successfully"));
   }
-
-  await userThatIsFollowing.save();
-  await userThatIsFollowed.save();
-
-  res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        { user: userThatIsFollowing },
-        isFollowing
-          ? "Unfollowed user successfully"
-          : "Followed user successfully"
-      )
-    );
 });
 
 const searchFriendByName = asyncHandler(async (req: Request, res: Response) => {
   const { username } = req.body;
+  const userId = (req as any).user?._id;
+  
+  console.log('Search friends - User ID:', userId);
+  console.log('Search friends - Username:', username);
+  
   if (!username) {
     throw new ApiError(400, "Username is required for search");
   }
 
+  if (!userId) {
+    throw new ApiError(401, "User not authenticated");
+  }
+
+  // Convert to string and validate
+  const userIdString = userId.toString();
+  if (!mongoose.Types.ObjectId.isValid(userIdString)) {
+    throw new ApiError(400, "Invalid user ID format");
+  }
+
+  // Get current user's following list
+  const currentUser = await User.findById(userIdString).select('following');
+  if (!currentUser) {
+    throw new ApiError(404, "Current user not found");
+  }
+
+  const followingIds = currentUser.following.map((f: any) => {
+    if (f.userId) {
+      return f.userId.toString();
+    } else if (mongoose.Types.ObjectId.isValid(f.toString())) {
+      return f.toString();
+    }
+    return null;
+  }).filter(Boolean);
+
   const listOfUsers = await User.find({
     username: { $regex: username, $options: "i" },
-  }).select("_id username profile profilePicture");
+  }).select("_id username firstName lastName profile profilePicture");
 
-  res.status(200).json(new ApiResponse(200, listOfUsers, "Users found"));
+  // Add isFollowing flag to each user
+  const usersWithFollowingStatus = listOfUsers.map((user: any) => ({
+    _id: user._id,
+    username: user.username,
+    firstName: user.firstName || user.profile?.name || user.username,
+    lastName: user.lastName || '',
+    profilePicture: user.profilePicture,
+    profile: user.profile,
+    isFollowing: followingIds.includes(user._id.toString())
+  }));
+
+  res.status(200).json(new ApiResponse(200, usersWithFollowingStatus, "Users found"));
 });
 
 const suggestedUsersToFollow = asyncHandler(
   async (req: Request, res: Response) => {
-    const userId = (req as any).user._id;
-    const user = await User.findById(userId);
-
-    if (!user) {
-      throw new ApiError(400, "Can't identify the user");
+    console.log('=== Suggested Users Controller Called ===');
+    
+    const userId = (req as any).user?._id;
+    console.log('Raw user ID from request:', userId);
+    console.log('User ID type:', typeof userId);
+    
+    if (!userId) {
+      console.error('No user ID found in request');
+      throw new ApiError(401, "User not authenticated");
     }
 
-    const followingIds = user.following.map((f: any) =>
-      f.userId ? f.userId.toString() : f.toString()
-    );
-    followingIds.push(userId.toString());
+    // Convert to string and validate MongoDB ObjectId format
+    const userIdString = userId.toString();
+    console.log('User ID as string:', userIdString);
+    
+    if (!mongoose.Types.ObjectId.isValid(userIdString)) {
+      console.error('Invalid user ID format:', userIdString);
+      throw new ApiError(400, "Invalid user ID format");
+    }
 
-    const suggestions = await User.find({
-      _id: { $nin: followingIds },
-    })
-      .select("username profile profilePicture followers")
-      .sort({ "followers.length": -1 })
-      .limit(10);
+    const user = await User.findById(userIdString);
+    console.log('Found user:', user ? user.username : 'null');
 
-    res
-      .status(200)
-      .json(new ApiResponse(200, suggestions, "Suggested users to follow"));
+    if (!user) {
+      throw new ApiError(404, "User not found");
+    }
+
+    // Get the list of users that the current user is already following
+    const followingIds = user.following.map((f: any) => {
+      if (f.userId) {
+        return f.userId.toString();
+      } else if (mongoose.Types.ObjectId.isValid(f.toString())) {
+        return f.toString();
+      }
+      return null;
+    }).filter(Boolean); // Remove null values
+    
+    // Add current user's ID to exclude from suggestions
+    followingIds.push(userIdString);
+    
+    console.log('Following IDs to exclude:', followingIds);
+
+    try {
+      // Find users that are not in the following list
+      const suggestions = await User.find({
+        _id: { $nin: followingIds },
+      })
+        .select("_id username firstName lastName profile profilePicture followers")
+        .sort({ "followers.length": -1 })
+        .limit(10);
+
+      console.log('Found suggestions:', suggestions.length);
+
+      // Format the response to match frontend expectations
+      const suggestionsWithStatus = suggestions.map((user: any) => ({
+        _id: user._id,
+        username: user.username,
+        firstName: user.firstName || user.profile?.name || user.username,
+        lastName: user.lastName || '',
+        profilePicture: user.profilePicture,
+        profile: user.profile,
+        isFollowing: false // These are suggestions, so user is not following them yet
+      }));
+
+      console.log('Returning suggestions with status:', suggestionsWithStatus.length);
+
+      res
+        .status(200)
+        .json(new ApiResponse(200, suggestionsWithStatus, "Suggested users to follow"));
+        
+    } catch (dbError) {
+      console.error('Database error in suggestions query:', dbError);
+      throw new ApiError(500, "Failed to fetch suggested users");
+    }
   }
 );
 
@@ -967,4 +1181,5 @@ export {
   searchFriendByName,
   suggestedUsersToFollow,
   getProfileOfUser,
+  createPasswordForGoogleUser, // Add this new export
 };

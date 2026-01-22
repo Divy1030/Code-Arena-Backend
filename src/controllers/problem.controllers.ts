@@ -129,7 +129,7 @@ const submitSolution = asyncHandler(
       });
     } else {
       // Update score to max of previous and new
-      problemEntry.score = Math.max(problemEntry.score, score);
+      problemEntry.score = Math.max(problemEntry.score || 0, score);
       problemEntry.submissionTime = new Date();
       problemEntry.submissionStatus = subStatus;
     }

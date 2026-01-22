@@ -1,8 +1,9 @@
 import nodemailer from 'nodemailer';
-import { html } from '../../public/mail/otpMailTemplet.js';
+import { html } from '../templates/mail/otpMailTemplet.js'; // Add .js extension for ES modules
 import dotenv from 'dotenv';
 
 dotenv.config();
+
 // Validate environment variables
 if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     throw new Error('EMAIL_USER or EMAIL_PASS environment variables are not set');

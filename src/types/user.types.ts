@@ -1,86 +1,55 @@
-import mongoose from 'mongoose';
+import { Document, Types } from "mongoose";
 
-export interface IContestParticipation {
-    contestId: mongoose.Types.ObjectId;
-    rank: number;
-    score: number;
-    contestProblems: {
-        problemId: mongoose.Types.ObjectId;
-        score: number;
-        submissionTime: Date;
-        submissionStatus: {
-            type: String;
-            enum: ["correct", "wrong", "partially correct"];
-            default: "wrong";
-        };
-    }[];
-}
-
-export interface IContestModeration {
-    contestId: mongoose.Types.ObjectId;
-}
-export interface IContestCreation {
-    contestId: mongoose.Types.ObjectId;
-}
-
-export interface IFollowers {
-    userId: mongoose.Types.ObjectId;
+export interface IUser extends Document {
+  username: string;
+  email: string;
+  password: string;
+  isGoogleAccount: boolean;
+  hasPassword: boolean;
+  online: boolean;
+  followers: Array<{
+    userId: Types.ObjectId;
     followedAt: Date;
-}
-
-declare global {
-  namespace Express {
-    interface Request {
-      user?: IUser;
-    }
-  }
-}
-
-export interface ISolvedProblem {
-    problemId: mongoose.Types.ObjectId;
-    solvedAt: Date;
-}
-
-export interface IProfile {
+  }>;
+  following: Array<{
+    userId: Types.ObjectId;
+    followedAt?: Date;
+  }>;
+  refreshToken?: string;
+  role: "admin" | "participant";
+  profilePicture: string;
+  profile: {
     name?: string;
     institution?: string;
     country?: string;
     avatarUrl?: string;
     bio?: string;
-}
-
-export interface IUserMethods {
-    isPasswordCorrect(password: string): Promise<boolean>;
-    generateAccessToken(): string;
-    generateRefreshToken(): string;
-}
-
-export interface IUser extends mongoose.Document, IUserMethods {
-    username: string;
-    email: string;
-    password: string;
-    online: boolean;
-    role: 'admin' | 'participant';
-    profilePicture?: string; // Add this line for the profile picture field
-    profile?: IProfile;
-    followers: IFollowers[];
-    following: IFollowers[];
-    rating: number;
-    contestsParticipated: Array<{
-        contestId: mongoose.Types.ObjectId;
-        rank?: number;
-        score?: number;
-        contestProblems: Array<{
-            problemId: mongoose.Types.ObjectId;
-            score: number;
-            submissionTime: Date;
-            submissionStatus: "correct" | "wrong" | "partially correct";
-        }>;
+  };
+  rating: number;
+  contestsParticipated: Array<{
+    contestId: Types.ObjectId;
+    rank?: number;
+    score?: number;
+    contestProblems: Array<{
+      problemId: Types.ObjectId;
+      score?: number;
+      submissionTime?: Date;
+      submissionStatus: "correct" | "wrong" | "partially correct";
     }>;
-    contestsCreated: IContestCreation[];
-    contestsModerated: IContestModeration[];
-    solvedProblems: ISolvedProblem[];
-    refreshToken?: string;
-    createdAt: Date;
-    updatedAt: Date;
+  }>;
+  solvedProblems: Array<{
+    problemId: Types.ObjectId;
+    solvedAt: Date;
+  }>;
+  contestsCreated: Array<{
+    contestId: Types.ObjectId;
+  }>;
+  contestsModerated: Array<{
+    contestId: Types.ObjectId;
+  }>;
+  createdAt: Date;
+  updatedAt: Date;
+  isPasswordCorrect(password: string): Promise<boolean>;
+  generateAccessToken(): string;
+  generateRefreshToken(): string;
 }
