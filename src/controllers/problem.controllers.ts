@@ -180,4 +180,55 @@ const getProblem = asyncHandler(
   }
 );
 
-export { submitSolution, getProblem };
+const getLeaderboard = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const { contestId } = req.params;
+    const contest = await Contest.findById(contestId);
+    if (!contest) {
+      throw new ApiError(404, "Contest not found");
+    }
+
+    // Get all participants of the contest
+    const participantIds = contest.participants.map((p: any) => p.userId);
+
+    // Fetch users who participated in this contest
+    const users = await User.find({
+      _id: { $in: participantIds },
+      "contestsParticipated.contestId": contestId,
+    }).select("username profilePicture contestsParticipated");
+
+    // Build leaderboard data
+    const leaderboard = users
+      .map((user: any) => {
+        const contestEntry = user.contestsParticipated.find(
+          (c: any) => c.contestId?.toString() === contestId
+        );
+
+        const score = contestEntry?.score || 0;
+        const problemsSolved = contestEntry?.contestProblems?.filter(
+          (p: any) => p.submissionStatus === "correct"
+        ).length || 0;
+
+        return {
+          userId: user._id,
+          username: user.username,
+          profilePicture: user.profilePicture,
+          score,
+          problemsSolved,
+        };
+      })
+      .sort((a: any, b: any) => b.score - a.score) // Sort by score descending
+      .map((entry: any, index: number) => ({
+        ...entry,
+        rank: index + 1,
+      }));
+
+    res
+      .status(200)
+      .json(
+        new ApiResponse(200, leaderboard, "Leaderboard fetched successfully")
+      );
+  }
+);
+
+export { submitSolution, getProblem, getLeaderboard };
