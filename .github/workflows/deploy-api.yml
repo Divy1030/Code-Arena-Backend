@@ -20,8 +20,9 @@ jobs:
           username: ${{ secrets.API_SERVER_USER }}
           key: ${{ secrets.API_SERVER_SSH_KEY }}
           script: |
+            set -e
             cd ~/Code-Arena-Backend
             git pull origin main
-            npm install
+            npm install --production=false
             npm run build
             pm2 restart api-server
