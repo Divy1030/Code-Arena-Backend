@@ -1,10 +1,19 @@
 import { Router } from "express";
-import { runAllTestCases, runCode } from "../controllers/code.controllers.js";
+import {
+  runCode,
+  submitCode,
+  getResult,
+} from "../controllers/code.controllers.js";
 
 const router = Router();
 
-router.route("/execute").post(runCode);
-router.route("/execute-all").post(runAllTestCases);
+// Run with sample test cases
+router.post("/run", runCode);
 
+// Submit with all test cases
+router.post("/submit", submitCode);
+
+// Poll result
+router.get("/result/:jobId", getResult);
 
 export default router;

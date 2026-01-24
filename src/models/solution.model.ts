@@ -1,55 +1,35 @@
 import mongoose, { Schema } from "mongoose";
-import { ISolution } from "../types/solution.types";
-import { ITestCase } from "../types/solution.types";
+import { ISolution, ITestCaseResult } from "../types/solution.types.js";
 
-const solutionSchema = new Schema(
+const testCaseResultSchema = new Schema<ITestCaseResult>(
   {
-    problemId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Problem",
+    input: {
+      type: String,
       required: true,
     },
-    score: {
-      type: Number,
-      default: 0,
+    expectedOutput: {
+      type: String,
+      required: true,
     },
-    testCases: {
-      type: [
-        {
-          input: {
-            type: String,
-            required: true,
-          },
-          output: {
-            type: String,
-            required: true,
-          },
-          explanation: {
-            type: String,
-            required: false,
-          },
-        },
-      ],
-      default: [],
+    actualOutput: {
+      type: String,
+      required: true,
     },
-    testCasesPassed: {
-      type: [
-        {
-          input: {
-            type: String,
-            required: true,
-          },
-          output: {
-            type: String,
-            required: true,
-          },
-          explanation: {
-            type: String,
-            required: false,
-          },
-        },
-      ],
-      default: [],
+    status: {
+      type: String,
+      enum: ["Passed", "Failed", "TLE", "Runtime Error"],
+      required: true,
+    },
+  },
+  { _id: false }
+);
+
+const solutionSchema = new Schema<ISolution>(
+  {
+    problemId: {
+      type: Schema.Types.ObjectId,
+      ref: "Problem",
+      required: true,
     },
 
     solutionCode: {
@@ -62,23 +42,28 @@ const solutionSchema = new Schema(
       required: true,
     },
 
+    score: {
+      type: Number,
+      default: 0,
+    },
+
+    testCases: [testCaseResultSchema],
+
     timeOccupied: {
       type: Number,
-      default: 0,
     },
-
+    
     memoryOccupied: {
       type: Number,
-      default: 0,
     },
-
+    
     timeGivenOnSolution: {
       type: Number,
-      default: 0,
     },
   },
   { timestamps: true }
 );
 
-const Solution = mongoose.model("Solution", solutionSchema);
+const Solution = mongoose.model<ISolution>("Solution", solutionSchema);
+
 export default Solution;
