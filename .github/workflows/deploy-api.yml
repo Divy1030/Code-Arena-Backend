@@ -1,0 +1,27 @@
+name: Deploy API Server
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.API_SERVER_HOST }}
+          username: ${{ secrets.API_SERVER_USER }}
+          key: ${{ secrets.API_SERVER_SSH_KEY }}
+          script: |
+            cd ~/Code-Arena-Backend
+            git pull origin main
+            npm install
+            npm run build
+            pm2 restart api-server
