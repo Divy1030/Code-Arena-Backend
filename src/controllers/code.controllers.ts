@@ -30,14 +30,16 @@ const runCode = asyncHandler(async (req: Request, res: Response) => {
     createdAt: Date.now().toString(),
   });
 
+  const queueKey = `code_jobs:${language.toLowerCase()}`;
+
   await redis.rpush(
-    "code_jobs",
+    queueKey,
     JSON.stringify({
       jobId,
       mode: "run",
       language,
       code,
-      testCases, // SAMPLE cases
+      testCases, // sample cases
     }),
   );
 
@@ -69,15 +71,17 @@ const submitCode = asyncHandler(async (req: Request, res: Response) => {
     createdAt: Date.now().toString(),
   });
 
+  const queueKey = `code_jobs:${language.toLowerCase()}`;
+
   await redis.rpush(
-    "code_jobs",
+    queueKey,
     JSON.stringify({
       jobId,
       mode: "submit",
       problemId,
       language,
       code,
-      testCases, // ALL cases
+      testCases, // all cases
     }),
   );
 
