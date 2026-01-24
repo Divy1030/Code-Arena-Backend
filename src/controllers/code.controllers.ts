@@ -33,13 +33,13 @@ const runCode = asyncHandler(async (req: Request, res: Response) => {
   const queueKey = `code_jobs:${language.toLowerCase()}`;
 
   await redis.rpush(
-    queueKey,
+    `code_jobs:${language}:run`,
     JSON.stringify({
       jobId,
       mode: "run",
       language,
       code,
-      testCases, // sample cases
+      testCases,
     }),
   );
 
@@ -74,14 +74,14 @@ const submitCode = asyncHandler(async (req: Request, res: Response) => {
   const queueKey = `code_jobs:${language.toLowerCase()}`;
 
   await redis.rpush(
-    queueKey,
+    `code_jobs:${language}:submit`,
     JSON.stringify({
       jobId,
       mode: "submit",
       problemId,
       language,
       code,
-      testCases, // all cases
+      testCases,
     }),
   );
 
