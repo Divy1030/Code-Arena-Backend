@@ -22,6 +22,7 @@ const roomSchema = new Schema(
         submissionStatus: { type: String, default: "pending" },
         submissionTime: Date,
         rating: { type: Number, default: 1000 },
+        isCreator: { type: Boolean, default: false },
       },
     ],
     createdAt: { type: Date, default: Date.now },
