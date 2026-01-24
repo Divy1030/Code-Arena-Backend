@@ -1,21 +1,32 @@
 import mongoose from "mongoose";
 
-export interface ITestCase {
+export type TestCaseStatus =
+  | "Passed"
+  | "Failed"
+  | "TLE"
+  | "Runtime Error";
+
+export interface ITestCaseResult {
   input: string;
-  output: string;
-  explanation?: string;
+  expectedOutput: string;
+  actualOutput: string;
+  status: TestCaseStatus;
 }
 
 export interface ISolution extends mongoose.Document {
   problemId: mongoose.Types.ObjectId;
-  score: number;
-  testCases: ITestCase[];
-  testCasesPassed: ITestCase[];
+
   solutionCode: string;
   languageUsed: string;
-  timeOccupied: number;
-  memoryOccupied: number;
-  timeGivenOnSolution: number;
+
+  score: number;
+
+  testCases: ITestCaseResult[];
+
+  timeOccupied?: number;
+  memoryOccupied?: number;
+  timeGivenOnSolution?: number;
+
   createdAt: Date;
   updatedAt: Date;
 }
