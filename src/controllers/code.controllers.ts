@@ -5,20 +5,28 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { redis } from "../config/redis.js";
 import Solution from "../models/solution.model.js";
 
+const SUPPORTED_LANGUAGES = ["python", "cpp", "java", "javascript"];
+
 /**
- * RUN CODE → sample test cases
+ * RUN CODE → sample test cases (LOW priority)
  */
 const runCode = asyncHandler(async (req: Request, res: Response) => {
-  const { code, language, testCases } = req.body;
+  let { code, language, testCases } = req.body;
 
   if (!code || !language || !Array.isArray(testCases)) {
-    res.status(400).json(new ApiResponse(400, null, "Invalid payload"));
+    res
+      .status(400)
+      .json(new ApiResponse(400, null, "Invalid payload"));
     return;
   }
-  const SUPPORTED_LANGUAGES = ["python", "cpp", "java", "javascript"];
+
+  // 🔑 NORMALIZE LANGUAGE (CRITICAL)
+  language = language.toLowerCase();
 
   if (!SUPPORTED_LANGUAGES.includes(language)) {
-    res.status(400).json(new ApiResponse(400, null, "Unsupported language"));
+    res
+      .status(400)
+      .json(new ApiResponse(400, null, "Unsupported language"));
     return;
   }
 
@@ -27,11 +35,12 @@ const runCode = asyncHandler(async (req: Request, res: Response) => {
   await redis.hset(`job:${jobId}`, {
     status: "queued",
     mode: "run",
+    language,
+    code,
     createdAt: Date.now().toString(),
   });
 
-  const queueKey = `code_jobs:${language.toLowerCase()}`;
-
+  // ⬇ LOW PRIORITY QUEUE
   await redis.rpush(
     `code_jobs:${language}:run`,
     JSON.stringify({
@@ -40,26 +49,34 @@ const runCode = asyncHandler(async (req: Request, res: Response) => {
       language,
       code,
       testCases,
-    }),
+    })
   );
 
-  res.status(202).json(new ApiResponse(202, { jobId }, "Run started"));
+  res
+    .status(202)
+    .json(new ApiResponse(202, { jobId }, "Run started"));
 });
 
 /**
- * SUBMIT CODE → all test cases
+ * SUBMIT CODE → all test cases (HIGH priority)
  */
 const submitCode = asyncHandler(async (req: Request, res: Response) => {
-  const { code, language, testCases, problemId } = req.body;
+  let { code, language, testCases, problemId } = req.body;
 
   if (!code || !language || !Array.isArray(testCases)) {
-    res.status(400).json(new ApiResponse(400, null, "Invalid payload"));
+    res
+      .status(400)
+      .json(new ApiResponse(400, null, "Invalid payload"));
     return;
   }
-  const SUPPORTED_LANGUAGES = ["python", "cpp", "java", "javascript"];
+
+  // 🔑 NORMALIZE LANGUAGE (CRITICAL)
+  language = language.toLowerCase();
 
   if (!SUPPORTED_LANGUAGES.includes(language)) {
-    res.status(400).json(new ApiResponse(400, null, "Unsupported language"));
+    res
+      .status(400)
+      .json(new ApiResponse(400, null, "Unsupported language"));
     return;
   }
 
@@ -68,24 +85,28 @@ const submitCode = asyncHandler(async (req: Request, res: Response) => {
   await redis.hset(`job:${jobId}`, {
     status: "queued",
     mode: "submit",
+    language,
+    code,
+    problemId,
     createdAt: Date.now().toString(),
   });
 
-  const queueKey = `code_jobs:${language.toLowerCase()}`;
-
+  // ⬆ HIGH PRIORITY QUEUE
   await redis.rpush(
     `code_jobs:${language}:submit`,
     JSON.stringify({
       jobId,
       mode: "submit",
-      problemId,
       language,
       code,
+      problemId,
       testCases,
-    }),
+    })
   );
 
-  res.status(202).json(new ApiResponse(202, { jobId }, "Submission started"));
+  res
+    .status(202)
+    .json(new ApiResponse(202, { jobId }, "Submission started"));
 });
 
 /**
@@ -97,23 +118,24 @@ const getResult = asyncHandler(async (req: Request, res: Response) => {
   const result = await redis.hgetall(`job:${jobId}`);
 
   if (!result || !result.status) {
-    res.status(404).json(new ApiResponse(404, null, "Invalid jobId"));
+    res
+      .status(404)
+      .json(new ApiResponse(404, null, "Invalid jobId"));
     return;
   }
 
   if (result.status !== "completed") {
-    res
-      .status(200)
-      .json(
-        new ApiResponse(
-          200,
-          { status: result.status },
-          "Execution in progress",
-        ),
-      );
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        { status: result.status },
+        "Execution in progress"
+      )
+    );
     return;
   }
 
+  // 💾 Persist only once for submit
   if (result.mode === "submit" && !result.persisted) {
     await Solution.create({
       problemId: result.problemId,
@@ -126,6 +148,7 @@ const getResult = asyncHandler(async (req: Request, res: Response) => {
     await redis.hset(`job:${jobId}`, { persisted: "true" });
   }
 
+  // ⏳ TTL cleanup
   const ttl = result.mode === "submit" ? 600 : 120;
   await redis.expire(`job:${jobId}`, ttl);
 
@@ -138,7 +161,9 @@ const getResult = asyncHandler(async (req: Request, res: Response) => {
     results: result.results ? JSON.parse(result.results) : [],
   };
 
-  res.status(200).json(new ApiResponse(200, response, "Result fetched"));
+  res
+    .status(200)
+    .json(new ApiResponse(200, response, "Result fetched"));
 });
 
 export { runCode, submitCode, getResult };
