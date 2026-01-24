@@ -18,8 +18,8 @@ jobs:
         with:
           host: ${{ secrets.API_SERVER_HOST }}
           username: ${{ secrets.API_SERVER_USER }}
-          key: |
-            ${{ secrets.API_SERVER_SSH_KEY }}
+          key: ${{ secrets.API_SERVER_SSH_KEY }}
+          script_stop: true
           script: |
             cd ~/Code-Arena-Backend
             git pull origin main
