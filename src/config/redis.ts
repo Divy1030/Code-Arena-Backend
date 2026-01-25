@@ -1,8 +1,7 @@
 import Redis from "ioredis";
 
 export const redis = new Redis({
-  host: "127.0.0.1",
+  host: process.env.REDIS_HOST, // execution private IP
   port: 6379,
-  maxRetriesPerRequest: 1,
-  enableReadyCheck: false,
+  maxRetriesPerRequest: 3,
 });
