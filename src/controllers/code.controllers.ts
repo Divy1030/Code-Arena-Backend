@@ -3,7 +3,6 @@ import { v4 as uuidv4 } from "uuid";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { redis } from "../config/redis.js";
-import Solution from "../models/solution.model.js";
 
 const SUPPORTED_LANGUAGES = ["python", "cpp", "java", "javascript"];
 
@@ -99,6 +98,8 @@ const submitCode = asyncHandler(async (req: Request, res: Response) => {
 
 /**
  * RESULT POLLING
+ * Returns execution results from Redis - does NOT save to database
+ * (Database persistence handled by problem.controllers.ts submitSolution)
  */
 const getResult = asyncHandler(async (req: Request, res: Response) => {
   const { jobId } = req.params;
@@ -123,24 +124,7 @@ const getResult = asyncHandler(async (req: Request, res: Response) => {
     return;
   }
 
-  // 💾 Persist only once for submit
-  if (result.mode === "submit" && !result.persisted) {
-    await Solution.create({
-      problemId: result.problemId,
-      solutionCode: result.code,
-      languageUsed: result.language,
-      score: Number(result.score),
-      testCases: JSON.parse(result.results),
-      timeOccupied: result.totalTimeMs ? Number(result.totalTimeMs) : undefined,
-      memoryOccupied: result.maxMemoryKb
-        ? Number(result.maxMemoryKb)
-        : undefined,
-    });
-
-    await redis.hset(`job:${jobId}`, { persisted: "true" });
-  }
-
-  // ⏳ TTL cleanup
+  // ⏳ TTL cleanup - keep results available for frontend to save
   const ttl = result.mode === "submit" ? 600 : 120;
   await redis.expire(`job:${jobId}`, ttl);
 

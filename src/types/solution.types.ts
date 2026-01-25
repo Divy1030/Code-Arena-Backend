@@ -12,6 +12,8 @@ export interface ITestCaseResult {
 }
 
 export interface ISolution extends mongoose.Document {
+  userId: mongoose.Types.ObjectId;
+  contestId: mongoose.Types.ObjectId;
   problemId: mongoose.Types.ObjectId;
 
   solutionCode: string;

@@ -28,6 +28,16 @@ const testCaseResultSchema = new Schema<ITestCaseResult>(
 
 const solutionSchema = new Schema<ISolution>(
   {
+    userId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    contestId: {
+      type: Schema.Types.ObjectId,
+      ref: "Contest",
+      required: true,
+    },
     problemId: {
       type: Schema.Types.ObjectId,
       ref: "Problem",
