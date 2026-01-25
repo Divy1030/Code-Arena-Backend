@@ -14,9 +14,7 @@ const runCode = asyncHandler(async (req: Request, res: Response) => {
   let { code, language, testCases } = req.body;
 
   if (!code || !language || !Array.isArray(testCases)) {
-    res
-      .status(400)
-      .json(new ApiResponse(400, null, "Invalid payload"));
+    res.status(400).json(new ApiResponse(400, null, "Invalid payload"));
     return;
   }
 
@@ -24,9 +22,7 @@ const runCode = asyncHandler(async (req: Request, res: Response) => {
   language = language.toLowerCase();
 
   if (!SUPPORTED_LANGUAGES.includes(language)) {
-    res
-      .status(400)
-      .json(new ApiResponse(400, null, "Unsupported language"));
+    res.status(400).json(new ApiResponse(400, null, "Unsupported language"));
     return;
   }
 
@@ -49,12 +45,10 @@ const runCode = asyncHandler(async (req: Request, res: Response) => {
       language,
       code,
       testCases,
-    })
+    }),
   );
 
-  res
-    .status(202)
-    .json(new ApiResponse(202, { jobId }, "Run started"));
+  res.status(202).json(new ApiResponse(202, { jobId }, "Run started"));
 });
 
 /**
@@ -64,9 +58,7 @@ const submitCode = asyncHandler(async (req: Request, res: Response) => {
   let { code, language, testCases, problemId } = req.body;
 
   if (!code || !language || !Array.isArray(testCases)) {
-    res
-      .status(400)
-      .json(new ApiResponse(400, null, "Invalid payload"));
+    res.status(400).json(new ApiResponse(400, null, "Invalid payload"));
     return;
   }
 
@@ -74,9 +66,7 @@ const submitCode = asyncHandler(async (req: Request, res: Response) => {
   language = language.toLowerCase();
 
   if (!SUPPORTED_LANGUAGES.includes(language)) {
-    res
-      .status(400)
-      .json(new ApiResponse(400, null, "Unsupported language"));
+    res.status(400).json(new ApiResponse(400, null, "Unsupported language"));
     return;
   }
 
@@ -101,12 +91,10 @@ const submitCode = asyncHandler(async (req: Request, res: Response) => {
       code,
       problemId,
       testCases,
-    })
+    }),
   );
 
-  res
-    .status(202)
-    .json(new ApiResponse(202, { jobId }, "Submission started"));
+  res.status(202).json(new ApiResponse(202, { jobId }, "Submission started"));
 });
 
 /**
@@ -118,20 +106,20 @@ const getResult = asyncHandler(async (req: Request, res: Response) => {
   const result = await redis.hgetall(`job:${jobId}`);
 
   if (!result || !result.status) {
-    res
-      .status(404)
-      .json(new ApiResponse(404, null, "Invalid jobId"));
+    res.status(404).json(new ApiResponse(404, null, "Invalid jobId"));
     return;
   }
 
   if (result.status !== "completed") {
-    res.status(200).json(
-      new ApiResponse(
-        200,
-        { status: result.status },
-        "Execution in progress"
-      )
-    );
+    res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { status: result.status },
+          "Execution in progress",
+        ),
+      );
     return;
   }
 
@@ -143,6 +131,10 @@ const getResult = asyncHandler(async (req: Request, res: Response) => {
       languageUsed: result.language,
       score: Number(result.score),
       testCases: JSON.parse(result.results),
+      timeOccupied: result.totalTimeMs ? Number(result.totalTimeMs) : undefined,
+      memoryOccupied: result.maxMemoryKb
+        ? Number(result.maxMemoryKb)
+        : undefined,
     });
 
     await redis.hset(`job:${jobId}`, { persisted: "true" });
@@ -158,12 +150,12 @@ const getResult = asyncHandler(async (req: Request, res: Response) => {
     score: result.score ? Number(result.score) : null,
     passed: result.passed ? Number(result.passed) : null,
     total: result.total ? Number(result.total) : null,
+    executionTimeMs: result.totalTimeMs ? Number(result.totalTimeMs) : null,
+    memoryKb: result.maxMemoryKb ? Number(result.maxMemoryKb) : null,
     results: result.results ? JSON.parse(result.results) : [],
   };
 
-  res
-    .status(200)
-    .json(new ApiResponse(200, response, "Result fetched"));
+  res.status(200).json(new ApiResponse(200, response, "Result fetched"));
 });
 
 export { runCode, submitCode, getResult };
