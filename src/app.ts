@@ -8,24 +8,24 @@ import adminRouter from "./routes/admin.routes.js";
 import contestRouter from "./routes/contest.routes.js";
 import { problemRouter } from "./routes/problem.routes.js"; // ✅ FIXED LINE
 import socialRoutes from "./routes/social.routes.js";
-import { createServer } from "http";
+// import { createServer } from "http";
 import { Server } from "socket.io";
 import { ApiError } from "./utils/ApiError.js";
 import { ApiResponse } from "./utils/ApiResponse.js";
 
 const app = express();
-const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: "http://localhost:3000",
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-  connectionStateRecovery: {
-    maxDisconnectionDuration: 2 * 60 * 1000,
-    skipMiddlewares: false,
-  },
-});
+// const httpServer = createServer(app);
+// const io = new Server(httpServer, {
+//   cors: {
+//     origin: "http://localhost:3000",
+//     methods: ["GET", "POST"],
+//     credentials: true,
+//   },
+//   connectionStateRecovery: {
+//     maxDisconnectionDuration: 2 * 60 * 1000,
+//     skipMiddlewares: false,
+//   },
+// });
 
 // Socket connection handling is done in socket.controllers.ts
 
@@ -83,9 +83,6 @@ const errorHandler: ErrorRequestHandler = (err: any, req: Request, res: Response
 
 app.use(errorHandler);
 
-// Start the HTTP server
-httpServer.listen(8000, () => {
-  console.log(`Server is running on port 8000`);
-});
 
-export { app, io, httpServer };
+
+export { app };

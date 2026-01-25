@@ -1,4 +1,4 @@
-import { io } from "../app.js";
+import { io } from "../index.js";
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 import Room from "../models/room.model.js";
