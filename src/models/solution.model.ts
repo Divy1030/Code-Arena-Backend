@@ -20,8 +20,10 @@ const testCaseResultSchema = new Schema<ITestCaseResult>(
       enum: ["Passed", "Failed", "TLE", "Runtime Error"],
       required: true,
     },
+    timeMs: { type: Number },
+    memoryKb: { type: Number },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const solutionSchema = new Schema<ISolution>(
@@ -52,16 +54,16 @@ const solutionSchema = new Schema<ISolution>(
     timeOccupied: {
       type: Number,
     },
-    
+
     memoryOccupied: {
       type: Number,
     },
-    
+
     timeGivenOnSolution: {
       type: Number,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const Solution = mongoose.model<ISolution>("Solution", solutionSchema);
