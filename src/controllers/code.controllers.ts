@@ -1,235 +1,161 @@
-import { application, Request, Response } from "express";
-import axios from "axios";
-import dotenv from "dotenv";
+import { Request, Response } from "express";
+import { v4 as uuidv4 } from "uuid";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import { redis } from "../config/redis.js";
+import Solution from "../models/solution.model.js";
 
-dotenv.config();
+const SUPPORTED_LANGUAGES = ["python", "cpp", "java", "javascript"];
 
-const runCode = asyncHandler(async (req: Request, res: Response): Promise<any> => {
-    const {
-        code,
-        language,
-        testCases
-    }: {
-        code: string;
-        language: string;
-        testCases: { input: string; output: string }[]; // Changed to output to match what works in Postman
-    } = req.body;
+/**
+ * RUN CODE → sample test cases (LOW priority)
+ */
+const runCode = asyncHandler(async (req: Request, res: Response) => {
+  let { code, language, testCases } = req.body;
 
-    if (!code || !language || !testCases || !Array.isArray(testCases)) {
-        return res.status(400).json(
-            new ApiResponse(400, null, "Code, language, and testCases array are required")
-        );
-    }
+  if (!code || !language || !Array.isArray(testCases)) {
+    res.status(400).json(new ApiResponse(400, null, "Invalid payload"));
+    return;
+  }
 
-    const CODE_EXEC_API_URL = process.env.CODE_EXEC_API_URL;
-    if (!CODE_EXEC_API_URL) {
-        return res.status(500).json(
-            new ApiResponse(500, null, "Code execution API URL is not configured")
-        );
-    }
+  // 🔑 NORMALIZE LANGUAGE (CRITICAL)
+  language = language.toLowerCase();
 
-    try {
-        const response = await axios.post(
-            CODE_EXEC_API_URL,
-            { code, language, testCases }, // No transformation needed
-            { headers: { "Content-Type": "application/json" } }
-        );
+  if (!SUPPORTED_LANGUAGES.includes(language)) {
+    res.status(400).json(new ApiResponse(400, null, "Unsupported language"));
+    return;
+  }
 
-        return res.status(200).json(
-            new ApiResponse(200, response.data, "Code executed successfully")
-        );
-    } catch (error: any) {
-        return res.status(500).json(
-            new ApiResponse(
-                500,
-                null,
-                error.response?.data?.message || "Failed to execute code"
-            )
-        );
-    }
+  const jobId = uuidv4();
+
+  await redis.hset(`job:${jobId}`, {
+    status: "queued",
+    mode: "run",
+    language,
+    code,
+    createdAt: Date.now().toString(),
+  });
+
+  // ⬇ LOW PRIORITY QUEUE
+  await redis.rpush(
+    `code_jobs:${language}:run`,
+    JSON.stringify({
+      jobId,
+      mode: "run",
+      language,
+      code,
+      testCases,
+    }),
+  );
+
+  res.status(202).json(new ApiResponse(202, { jobId }, "Run started"));
 });
 
+/**
+ * SUBMIT CODE → all test cases (HIGH priority)
+ */
+const submitCode = asyncHandler(async (req: Request, res: Response) => {
+  let { code, language, testCases, problemId } = req.body;
 
-// i want to run all test cases and return the result and get the score according to the test cases passed or failed in percentage like if all passed then 100% and if some failed then some percentage
-const runAllTestCases = asyncHandler(async (req: Request, res: Response): Promise<any> => {
-    const {
-        code,
-        language,
-        testCases
-    }: {
-        code: string;
-        language: string;
-        testCases: { input: string; expectedOutput: string }[];
-    } = req.body;
+  if (!code || !language || !Array.isArray(testCases)) {
+    res.status(400).json(new ApiResponse(400, null, "Invalid payload"));
+    return;
+  }
 
-    if (!code || !language || !testCases || !Array.isArray(testCases)) {
-        return res.status(400).json(new ApiResponse(400, null, "Code, language, and testCases array are required"));
-    }
+  // 🔑 NORMALIZE LANGUAGE (CRITICAL)
+  language = language.toLowerCase();
 
-    const CODE_EXEC_API_URL = process.env.CODE_EXEC_API_URL;
-    if (!CODE_EXEC_API_URL) {
-        return res.status(500).json(new ApiResponse(500, null, "Code execution API URL is not configured"));
-    }
+  if (!SUPPORTED_LANGUAGES.includes(language)) {
+    res.status(400).json(new ApiResponse(400, null, "Unsupported language"));
+    return;
+  }
 
-    try {
-        const response = await axios.post(
-            CODE_EXEC_API_URL,
-            { code, language, testCases },
-            { headers: { "Content-Type": "application/json" } }
-        );
+  const jobId = uuidv4();
 
-        // Calculate score based on test cases results
-        const results = response.data.testCases || [];
-        // console.log(results)
-        const totalTests = testCases.length;
-        let passedTests = 0;
+  await redis.hset(`job:${jobId}`, {
+    status: "queued",
+    mode: "submit",
+    language,
+    code,
+    problemId,
+    createdAt: Date.now().toString(),
+  });
 
-        results.forEach((result: any, index: number) => {
-            if (result.status === 'Accepted') {
-                passedTests++;
-            }
-        });
+  // ⬆ HIGH PRIORITY QUEUE
+  await redis.rpush(
+    `code_jobs:${language}:submit`,
+    JSON.stringify({
+      jobId,
+      mode: "submit",
+      language,
+      code,
+      problemId,
+      testCases,
+    }),
+  );
 
-        const score = (passedTests / totalTests) * 100;
-
-        return res.status(200).json(
-            new ApiResponse(200, {
-                score: score,
-                passedTests,
-                totalTests,
-                results: response.data.testCases,
-            }, "Code executed successfully")
-        );
-    } catch (error: any) {
-        console.log(error)
-        return res.status(500).json(new ApiResponse(500, null, "Failed to execute code"));
-    }
+  res.status(202).json(new ApiResponse(202, { jobId }, "Submission started"));
 });
 
+/**
+ * RESULT POLLING
+ */
+const getResult = asyncHandler(async (req: Request, res: Response) => {
+  const { jobId } = req.params;
 
-// const runCode = asyncHandler(async (req: Request, res: Response): Promise<any> => {
-//     const {
-//         code,
-//         language,
-//         testCases
-//     }: {
-//         code: string;
-//         language: string;
-//         testCases: { input: string; expectedOutput: string }[];
-//     } = req.body;
+  const result = await redis.hgetall(`job:${jobId}`);
 
-//     if (!code || !language || !testCases || !Array.isArray(testCases)) {
-//         return res.status(400).json(new ApiResponse(400, null, "Code, language, and testCases array are required"));
-//     }
+  if (!result || !result.status) {
+    res.status(404).json(new ApiResponse(404, null, "Invalid jobId"));
+    return;
+  }
 
-//     let languageId: number;
+  if (result.status !== "completed") {
+    res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          { status: result.status },
+          "Execution in progress",
+        ),
+      );
+    return;
+  }
 
-//     switch (language.toLowerCase()) {
-//         case "python":
-//             languageId = 71;
-//             break;
-//         case "javascript":
-//             languageId = 63;
-//             break;
-//         case "java":
-//             languageId = 62;
-//             break;
-//         case "c":
-//             languageId = 50;
-//             break;
-//         case "cpp":
-//         case "c++":
-//             languageId = 54;
-//             break;
-//         default:
-//             return res.status(400).json(new ApiResponse(400, null, "Unsupported language"));
-//     }
+  // 💾 Persist only once for submit
+  if (result.mode === "submit" && !result.persisted) {
+    await Solution.create({
+      problemId: result.problemId,
+      solutionCode: result.code,
+      languageUsed: result.language,
+      score: Number(result.score),
+      testCases: JSON.parse(result.results),
+      timeOccupied: result.totalTimeMs ? Number(result.totalTimeMs) : undefined,
+      memoryOccupied: result.maxMemoryKb
+        ? Number(result.maxMemoryKb)
+        : undefined,
+    });
 
-//     const results = await Promise.all(
-//         testCases.map(async ({ input, expectedOutput }, index) => {
-//             try {
-//                 const response = await axios.post(
-//                     "https://judge0-ce.p.rapidapi.com/submissions?base64_encoded=false&wait=true",
-//                     {
-//                         source_code: code,
-//                         language_id: languageId,
-//                         stdin: input,
-//                         cpu_time_limit: 2,
-//                         memory_limit: 128000
-//                     },
-//                     {
-//                         headers: {
-//                             "content-type": "application/json",
-//                             "X-RapidAPI-Key": process.env.RAPID_API_KEY!,
-//                             "X-RapidAPI-Host": process.env.RAPID_API_HOST!
-//                         }
-//                     }
-//                 );
+    await redis.hset(`job:${jobId}`, { persisted: "true" });
+  }
 
-//                 const actual = (response.data.stdout || "").trim();
-//                 const expected = expectedOutput.trim();
+  // ⏳ TTL cleanup
+  const ttl = result.mode === "submit" ? 600 : 120;
+  await redis.expire(`job:${jobId}`, ttl);
 
-//                 return {
-//                     testCase: index + 1,
-//                     input,
-//                     expectedOutput: expected,
-//                     actualOutput: actual,
-//                     passed: actual === expected,
-//                     stderr: response.data.stderr,
-//                     status: response.data.status?.description,
-//                     time: response.data.time,
-//                     memory: response.data.memory
-//                 };
-//             } catch (error: any) {
-//                 return {
-//                     testCase: index + 1,
-//                     input,
-//                     expectedOutput,
-//                     actualOutput: "",
-//                     passed: false,
-//                     error: error.response?.data || error.message
-//                 };
-//             }
-//         })
-//     );
+  const response = {
+    status: result.status,
+    mode: result.mode,
+    score: result.score ? Number(result.score) : null,
+    passed: result.passed ? Number(result.passed) : null,
+    total: result.total ? Number(result.total) : null,
+    executionTimeMs: result.totalTimeMs ? Number(result.totalTimeMs) : null,
+    memoryKb: result.maxMemoryKb ? Number(result.maxMemoryKb) : null,
+    results: result.results ? JSON.parse(result.results) : [],
+  };
 
-//     const allPassed = results.every(r => r.passed);
+  res.status(200).json(new ApiResponse(200, response, "Result fetched"));
+});
 
-//     return res.status(200).json(
-//         new ApiResponse(200, {
-//             allPassed,
-//             results
-//         }, allPassed ? "All test cases passed ✅" : "Some test cases failed ❌")
-//     );
-// });
-
-// const getLanguages = asyncHandler(async (req: Request, res: Response): Promise<any> => {
-//     try {
-//         const response = await axios.get(
-//             "https://judge0-ce.p.rapidapi.com/languages/all",
-//             {
-//                 headers: {
-//                     "X-RapidAPI-Key": process.env.RAPID_API_KEY!,
-//                     "X-RapidAPI-Host": process.env.RAPID_API_HOST!
-//                 }
-//             }
-//         );
-
-//         const languages = response.data.map((lang: { id: number; name: string }) => ({
-//             id: lang.id,
-//             name: lang.name
-//         }));
-
-//         return res.status(200).json(
-//             new ApiResponse(200, { languages }, "Languages fetched successfully")
-//         );
-//     } catch (error: any) {
-//         return res.status(500).json(
-//             new ApiResponse(500, null, error.response?.data?.message || "Failed to fetch languages")
-//         );
-//     }
-// });
-
-export { runCode, runAllTestCases };
+export { runCode, submitCode, getResult };
