@@ -11,7 +11,7 @@ export interface ITestCaseResult {
   memoryKb?: number;
 }
 
-export interface ISolution extends mongoose.Document {
+export interface ISolution {
   userId: mongoose.Types.ObjectId;
   problemId: mongoose.Types.ObjectId;
   contestId?: mongoose.Types.ObjectId;
@@ -30,3 +30,5 @@ export interface ISolution extends mongoose.Document {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface ISolutionDocument extends ISolution, mongoose.Document {}
