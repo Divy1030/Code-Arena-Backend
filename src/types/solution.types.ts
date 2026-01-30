@@ -13,8 +13,8 @@ export interface ITestCaseResult {
 
 export interface ISolution {
   userId: mongoose.Types.ObjectId;
+
   problemId: mongoose.Types.ObjectId;
-  contestId?: mongoose.Types.ObjectId;
 
   solutionCode: string;
   languageUsed: string;

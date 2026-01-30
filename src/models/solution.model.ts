@@ -33,16 +33,15 @@ const solutionSchema = new Schema<ISolution>(
       ref: "User",
       required: true,
     },
-
+    contestId: {
+      type: Schema.Types.ObjectId,
+      ref: "Contest",
+      required: true,
+    },
     problemId: {
       type: Schema.Types.ObjectId,
       ref: "Problem",
       required: true,
-    },
-
-    contestId: {
-      type: Schema.Types.ObjectId,
-      ref: "Contest",
     },
 
     solutionCode: {
