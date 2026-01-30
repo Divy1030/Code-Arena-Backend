@@ -1,23 +1,33 @@
 import "dotenv/config";
-
+import { createServer } from "http";
+import { Server } from "socket.io";
 import connectDB from "./db/index.js";
 import { app } from "./app.js";
 import "./controllers/socket.controllers.js";
 
-const port: number = parseInt(process.env.PORT || "8080");
+const port = Number(process.env.PORT || 8000);
+
+// ✅ create server ONCE
+const httpServer = createServer(app);
+
+// ✅ attach socket.io HERE
+export const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
 
 connectDB()
   .then(() => {
-    app.listen(port, () => {
+    httpServer.listen(port, () => {
       console.log("------------------------------------------------");
-      console.log(`🚀 Server started successfully on port: ${port}`);
-      console.log(`🔗 URL: http://localhost:${port}`);
-      console.log(`✅ Database connected successfully`);
-      console.log("⌛ Server is waiting for requests...");
+      console.log(`🚀 Server running on port ${port}`);
       console.log("------------------------------------------------");
     });
   })
-  .catch((err: unknown) => {
-    console.error("❌ MONGO DB connection failed!!!", err);
+  .catch((err) => {
+    console.error("❌ DB connection failed", err);
     process.exit(1);
   });
