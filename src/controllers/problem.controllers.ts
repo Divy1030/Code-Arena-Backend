@@ -231,4 +231,9 @@ const getLeaderboard = asyncHandler(
   }
 );
 
-export { submitSolution, getProblem, getLeaderboard };
+const getAllProblems = asyncHandler( async (req: Request, res: Response) : Promise<void> => {
+  const problems = await Problem.find();
+  res.status(200).json(new ApiResponse(200, problems, "All problems fetched successfully"));
+})
+
+export { submitSolution, getProblem, getLeaderboard, getAllProblems };
