@@ -231,6 +231,49 @@ const getLeaderboard = asyncHandler(
   }
 );
 
+const getAllProblems = asyncHandler( async (req: Request, res: Response) : Promise<void> => {
+  const problems = await Problem.find();
+  res.status(200).json(new ApiResponse(200, problems, "All problems fetched successfully"));
+})
 
+const getProblemById = asyncHandler(
+  async (req: Request, res: Response): Promise<void> => {
+    const { problemId } = req.params;
+    const userId = (req as any).user?._id;
 
-export { submitSolution, getProblem, getLeaderboard };
+    // Populate the solution field to get full solution details
+    const problem = await Problem.findById(problemId).populate({
+      path: "solution",
+      select: "solutionCode languageUsed score testCases timeOccupied memoryOccupied createdAt",
+    });
+    
+    if (!problem) {
+      throw new ApiError(404, "Problem not found");
+    }
+
+    // If user is authenticated, fetch their solution for this problem
+    let userSolution = null;
+    if (userId) {
+      // Get the most recent solution by this user for this problem
+      userSolution = await Solution.findOne({
+        problemId: new mongoose.Types.ObjectId(problemId),
+        userId: new mongoose.Types.ObjectId(userId),
+      })
+        .sort({ createdAt: -1 }) // Get the most recent solution
+        .select("solutionCode languageUsed score testCases timeOccupied memoryOccupied createdAt");
+    }
+
+    res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          problem,
+          userSolution,
+        },
+        "Problem fetched successfully"
+      )
+    );
+  }
+);
+
+export { submitSolution, getProblem, getLeaderboard, getAllProblems, getProblemById };

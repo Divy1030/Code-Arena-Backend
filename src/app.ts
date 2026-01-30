@@ -6,7 +6,7 @@ import authRouter from "./routes/user.routes.js"; // This is actually the user r
 import codeRouter from "./routes/code.routes.js";
 import adminRouter from "./routes/admin.routes.js";
 import contestRouter from "./routes/contest.routes.js";
-import { problemRouter } from "./routes/problem.routes.js"; // ✅ FIXED LINE
+import problemRouter from "./routes/problem.routes.js";
 import socialRoutes from "./routes/social.routes.js";
 // import { createServer } from "http";
 import { Server } from "socket.io";
