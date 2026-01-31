@@ -20,6 +20,7 @@ export interface ISolution {
   languageUsed: string;
 
   score: number;
+  maxScore: number;
 
   testCases: ITestCaseResult[];
 

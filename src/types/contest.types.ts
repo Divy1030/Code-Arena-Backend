@@ -5,10 +5,6 @@ export interface IParticipant {
     joinedAt: Date;
 }
 
-export interface ISubmission {
-    submissionId: mongoose.Types.ObjectId;
-}
-
 export interface IContest extends mongoose.Document {
     title: string;
     description?: string;
@@ -19,7 +15,7 @@ export interface IContest extends mongoose.Document {
     duration: number; // in minutes
     problems: mongoose.Types.ObjectId[];
     participants: IParticipant[];
-    submissions: ISubmission[];
+    submissions: mongoose.Types.ObjectId[]; // Array of Solution IDs
     score?: number;
     rank?: number;
     attempts?: number;

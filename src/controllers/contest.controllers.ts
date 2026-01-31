@@ -8,6 +8,7 @@ import { IUser } from "../types/user.types.js";
 import User from "../models/user.model.js";
 import mongoose from "mongoose";
 import Problem from "../models/problem.model.js";
+import Solution from "../models/solution.model.js";
 import cloudinary from "../config/cloudinary.js";
 
 
@@ -1093,6 +1094,74 @@ const getContestParticipants = asyncHandler(async (req: Request, res: Response) 
   );
 });
 
+const getUserSubmissions = asyncHandler(async (req: Request, res: Response) => {
+  const { contestId } = req.params;
+  
+  console.log('🔍 getUserSubmissions called for contestId:', contestId);
+  
+  if (!mongoose.isValidObjectId(contestId)) {
+    throw new ApiError(400, "Invalid Contest ID format");
+  }
+  
+  const userId = req.user?._id as mongoose.Types.ObjectId;
+  const user = await User.findById(userId);
+  
+  console.log('👤 Fetching submissions for userId:', userId.toString());
+  
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+  
+  // Verify if contest exists
+  const contest = await Contest.findById(contestId);
+  if (!contest) {
+    throw new ApiError(404, "Contest not found");
+  }
+  
+  console.log('🏆 Contest submissions array length:', contest.submissions?.length || 0);
+  
+  // Get user's submissions from the Solution model
+  const submissions = await Solution.find({
+    userId: userId,
+    contestId: contestId
+  })
+  .populate('problemId', 'title difficulty')
+  .sort({ createdAt: -1 }); // Most recent first
+  
+  console.log(`📋 Found ${submissions.length} submissions in Solution collection`);
+  
+  // Map submissions to include problem info and format data
+  const formattedSubmissions = submissions.map((sub, idx) => {
+    // Use the stored maxScore to accurately determine status
+    const maxScore = (sub as any).maxScore || 100;
+    const status = sub.score >= maxScore ? 'correct' : sub.score > 0 ? 'partially correct' : 'wrong';
+    
+    console.log(`Submission ${idx + 1}:`, {
+      id: sub._id,
+      score: sub.score,
+      maxScore,
+      status
+    });
+    
+    return {
+      _id: sub._id,
+      problemId: sub.problemId,
+      score: sub.score,
+      maxScore: maxScore,
+      solutionCode: sub.solutionCode,
+      languageUsed: sub.languageUsed,
+      timeOccupied: sub.timeOccupied,
+      memoryOccupied: sub.memoryOccupied,
+      submittedAt: sub.createdAt,
+      status: status
+    };
+  });
+  
+  res.status(200).json(
+    new ApiResponse(200, formattedSubmissions, "Submissions fetched successfully")
+  );
+});
+
 const updateContestBackground = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?._id;
   
@@ -1204,5 +1273,6 @@ export {
   updateProblem,
   deleteProblem,
   getContestParticipants,
+  getUserSubmissions,
   updateContestBackground 
 };

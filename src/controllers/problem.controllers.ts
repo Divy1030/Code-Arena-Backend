@@ -56,7 +56,7 @@ const submitSolution = asyncHandler(
       memoryOccupied,
       timeGivenOnSolution,
     } = req.body;
-    if (!score) {
+    if (score === undefined || score === null) {
       throw new ApiError(400, "Score is required");
     }
     if (!solutionCode) {
@@ -75,11 +75,25 @@ const submitSolution = asyncHandler(
     // if (!timeGivenOnSolution) {
     //   throw new ApiError(400, "Time Given On Solution is required");
     // }
+    // Calculate actualMaxScore before creating solution
+    const actualMaxScore = problem.maxScore > 0 
+      ? problem.maxScore 
+      : (problem.testCases?.length || 0) * 100;
+
+    console.log('💾 Creating solution with:', {
+      userId: userId.toString(),
+      problemId,
+      score,
+      actualMaxScore,
+      expectedStatus: score >= actualMaxScore ? 'correct' : score > 0 ? 'partially correct' : 'wrong'
+    });
+
     const solution = await Solution.create({
       userId,
       contestId,
       problemId: new mongoose.Types.ObjectId(problemId),
       score,
+      maxScore: actualMaxScore,
       solutionCode,
       languageUsed,
       timeOccupied,
@@ -89,6 +103,20 @@ const submitSolution = asyncHandler(
     if (!solution) {
       throw new ApiError(500, "Solution not created");
     }
+
+    console.log('✅ Solution created:', {
+      id: solution._id,
+      score: solution.score,
+      maxScore: (solution as any).maxScore,
+      status: solution.score >= ((solution as any).maxScore || actualMaxScore) ? 'correct' : solution.score > 0 ? 'partially correct' : 'wrong'
+    });
+
+    // Add solution to contest's submissions array
+    contest.submissions = contest.submissions || [];
+    contest.submissions.push(solution._id as mongoose.Types.ObjectId);
+    await contest.save();
+
+    console.log(`✅ Solution ${solution._id} added to contest submissions. Total submissions: ${contest.submissions.length}`);
 
     if (!Array.isArray(user.contestsParticipated)) {
       throw new ApiError(400, "User contestsParticipated is not a valid array");
@@ -127,12 +155,6 @@ const submitSolution = asyncHandler(
       isCorrect: subStatus === "correct"
     });
 
-    // FIX: If maxScore is 0 or not set, calculate it based on test cases
-    // Each test case is worth equal points, total = 100 * number of test cases
-    const actualMaxScore = problem.maxScore > 0 
-      ? problem.maxScore 
-      : (problem.testCases?.length || 0) * 100;
-
     // Recalculate submission status with actual max score
     const actualStatus: "correct" | "wrong" | "partially correct" =
       score >= actualMaxScore
@@ -144,7 +166,8 @@ const submitSolution = asyncHandler(
     console.log('✅ Corrected submission details:', {
       actualMaxScore,
       actualStatus,
-      willUpdateGlobalStats: actualStatus === "correct"
+      willUpdateGlobalStats: actualStatus === "correct",
+      storingMaxScore: actualMaxScore
     });
 
     if (!problemEntry) {

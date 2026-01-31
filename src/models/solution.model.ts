@@ -59,6 +59,11 @@ const solutionSchema = new Schema<ISolution>(
       default: 0,
     },
 
+    maxScore: {
+      type: Number,
+      required: true,
+    },
+
     testCases: [testCaseResultSchema],
 
     timeOccupied: {
