@@ -140,14 +140,50 @@ const submitSolution = asyncHandler(
       0
     );
 
-    console.log("User: ", user);
+    // Update global solvedProblems if this is the first correct submission for this problem
+    let solvedForFirstTime = false;
+    if (subStatus === "correct") {
+      const alreadySolved = user.solvedProblems.some(
+        (sp: any) => sp.problemId.toString() === problemId
+      );
+      
+      if (!alreadySolved) {
+        solvedForFirstTime = true;
+        user.solvedProblems.push({
+          problemId: new mongoose.Types.ObjectId(problemId),
+          solvedAt: new Date(),
+        });
+        
+        // Update rating - simple increment for now (can be made more sophisticated)
+        user.rating = (user.rating || 1000) + 10;
+        
+        console.log(`\u2705 First time solving problem ${problemId}! Rating: ${user.rating}, Total solved: ${user.solvedProblems.length}`);
+      } else {
+        console.log(`\ud83d\udd04 Problem ${problemId} already solved before`);
+      }
+    }
+
+    console.log("User stats:", {
+      username: user.username,
+      rating: user.rating,
+      totalSolved: user.solvedProblems.length,
+      contestScore: contestEntry.score
+    });
 
     await user.save();
 
     res
       .status(201)
       .json(
-        new ApiResponse(201, { user }, "Solution submitted and scores updated")
+        new ApiResponse(201, { 
+          user, 
+          solvedForFirstTime,
+          stats: {
+            rating: user.rating,
+            totalSolved: user.solvedProblems.length,
+            contestScore: contestEntry.score
+          }
+        }, "Solution submitted and scores updated")
       );
   }
 );
@@ -174,9 +210,24 @@ const getProblem = asyncHandler(
     if (!problem) {
       throw new ApiError(404, "Problem not found");
     }
+
+    // Fetch user's previous solution for this problem
+    let userSolution = null;
+    try {
+      userSolution = await Solution.findOne({
+        userId: new mongoose.Types.ObjectId(userId),
+        problemId: new mongoose.Types.ObjectId(problemId),
+        contestId: new mongoose.Types.ObjectId(contestId),
+      })
+        .sort({ createdAt: -1 }) // Get the most recent solution
+        .select("solutionCode languageUsed score timeOccupied memoryOccupied createdAt");
+    } catch (error) {
+      console.error("Error fetching user solution:", error);
+    }
+
     res
       .status(200)
-      .json(new ApiResponse(200, problem, "Problem fetched successfully"));
+      .json(new ApiResponse(200, { ...problem.toObject(), userSolution }, "Problem fetched successfully"));
   }
 );
 
@@ -205,9 +256,14 @@ const getLeaderboard = asyncHandler(
         );
 
         const score = contestEntry?.score || 0;
-        const problemsSolved = contestEntry?.contestProblems?.filter(
-          (p: any) => p.submissionStatus === "correct"
-        ).length || 0;
+        
+        // Count unique problems with correct submissions
+        const uniqueProblemIds = new Set(
+          contestEntry?.contestProblems
+            ?.filter((p: any) => p.submissionStatus === "correct")
+            .map((p: any) => p.problemId.toString()) || []
+        );
+        const problemsSolved = uniqueProblemIds.size;
 
         return {
           userId: user._id,
