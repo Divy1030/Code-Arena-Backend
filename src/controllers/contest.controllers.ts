@@ -1071,17 +1071,20 @@ const getContestParticipants = asyncHandler(async (req: Request, res: Response) 
     }
   ]);
   
-  // Combine participant data with join timestamps
+  // Combine participant data with join timestamps and scores
   const enrichedParticipants = participantUsers.map(user => {
     const participantData = contest.participants.find(p => 
       p.userId.equals(user.id)
     );
     
     return {
-      id: user.id,
-      username: user.username,
-      signupDate: participantData?.joinedAt,
-      // Consider a user logged in if they've been active in the last 15 minutes
+      userId: {
+        _id: user.id,
+        username: user.username
+      },
+      totalScore: participantData?.totalScore || 0,
+      problemsSolved: participantData?.problemsSolved || 0,
+      joinedAt: participantData?.joinedAt,
       lastLogin: user.lastActive && 
         (new Date().getTime() - new Date(user.lastActive).getTime() < 15 * 60 * 1000) 
         ? user.lastActive : null,
