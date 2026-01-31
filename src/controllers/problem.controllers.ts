@@ -127,19 +127,39 @@ const submitSolution = asyncHandler(
       isCorrect: subStatus === "correct"
     });
 
+    // FIX: If maxScore is 0 or not set, calculate it based on test cases
+    // Each test case is worth equal points, total = 100 * number of test cases
+    const actualMaxScore = problem.maxScore > 0 
+      ? problem.maxScore 
+      : (problem.testCases?.length || 0) * 100;
+
+    // Recalculate submission status with actual max score
+    const actualStatus: "correct" | "wrong" | "partially correct" =
+      score >= actualMaxScore
+        ? "correct"
+        : score > 0
+          ? "partially correct"
+          : "wrong";
+
+    console.log('✅ Corrected submission details:', {
+      actualMaxScore,
+      actualStatus,
+      willUpdateGlobalStats: actualStatus === "correct"
+    });
+
     if (!problemEntry) {
       // If not present, push a new entry
       contestEntry.contestProblems.push({
         problemId: new mongoose.Types.ObjectId(problemId),
         score,
         submissionTime: new Date(),
-        submissionStatus: subStatus,
+        submissionStatus: actualStatus,
       });
     } else {
       // Update score to max of previous and new
       problemEntry.score = Math.max(problemEntry.score || 0, score);
       problemEntry.submissionTime = new Date();
-      problemEntry.submissionStatus = subStatus;
+      problemEntry.submissionStatus = actualStatus;
     }
 
     // Update contest score to sum of all contestProblems scores
@@ -150,7 +170,7 @@ const submitSolution = asyncHandler(
 
     // Update global solvedProblems if this is the first correct submission for this problem
     let solvedForFirstTime = false;
-    if (subStatus === "correct") {
+    if (actualStatus === "correct") {
       const alreadySolved = user.solvedProblems.some(
         (sp: any) => sp.problemId.toString() === problemId
       );
