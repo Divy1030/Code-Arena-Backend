@@ -20,7 +20,11 @@ import {
   getContestParticipants,
   getUserSubmissions,
   getAllContestSubmissions,
-  updateContestBackground
+  updateContestBackground,
+  updateContestRatings,
+  getGlobalLeaderboard,
+  initializeAllRatings,
+  recalculateRanks
 } from "../controllers/contest.controllers.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { uploadContestBackground } from "../middlewares/upload.middleware.js";
@@ -59,6 +63,18 @@ router.route('/:contestId/submissions').get(verifyJWT, getUserSubmissions);
 
 // Add route for getting all contest submissions (all users)
 router.route('/:contestId/all-submissions').get(verifyJWT, getAllContestSubmissions);
+
+// Add route for updating contest ratings (after contest ends)
+router.route('/:contestId/update-ratings').post(verifyJWT, updateContestRatings);
+
+// Add route for initializing all ratings (admin only)
+router.route('/admin/initialize-ratings').post(verifyJWT, initializeAllRatings);
+
+// Add route for recalculating ranks (can be called publicly)
+router.route('/admin/recalculate-ranks').post(recalculateRanks);
+
+// Add route for global leaderboard
+router.route('/global/leaderboard').get(getGlobalLeaderboard);
 
 // Add the new route for updating contest background
 router.route('/background/:contestId')

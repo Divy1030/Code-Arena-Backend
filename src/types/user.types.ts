@@ -26,6 +26,16 @@ export interface IUser extends Document {
     bio?: string;
   };
   rating: number;
+  globalRank?: number;
+  maxRating: number;
+  ratingHistory: Array<{
+    contestId: Types.ObjectId;
+    oldRating: number;
+    newRating: number;
+    ratingChange: number;
+    rank: number;
+    timestamp: Date;
+  }>;
   contestsParticipated: Array<{
     contestId: Types.ObjectId;
     rank?: number;

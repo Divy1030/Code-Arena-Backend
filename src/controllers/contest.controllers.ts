@@ -10,6 +10,7 @@ import mongoose from "mongoose";
 import Problem from "../models/problem.model.js";
 import Solution from "../models/solution.model.js";
 import cloudinary from "../config/cloudinary.js";
+import { calculateContestRatings, getRatingTier } from "../utils/contestRating.js";
 
 
 const createContest = asyncHandler(async (req: Request, res: Response) => {
@@ -1309,6 +1310,317 @@ const updateContestBackground = asyncHandler(async (req: Request, res: Response)
   }
 });
 
+/**
+ * Update ratings for all participants after a contest ends
+ * This should be called when the contest ends
+ */
+const updateContestRatings = asyncHandler(async (req: Request, res: Response) => {
+  const { contestId } = req.params;
+  
+  if (!mongoose.isValidObjectId(contestId)) {
+    throw new ApiError(400, "Invalid contest ID");
+  }
+
+  const contest = await Contest.findById(contestId);
+  if (!contest) {
+    throw new ApiError(404, "Contest not found");
+  }
+
+  // Check if contest has ended
+  const now = new Date();
+  if (now < contest.endTime) {
+    throw new ApiError(400, "Contest has not ended yet");
+  }
+
+  // Check if ratings already calculated
+  const participants = contest.participants || [];
+  if (participants.length === 0) {
+    throw new ApiError(400, "No participants in the contest");
+  }
+
+  // Get all participant data with their current ratings
+  const participantData = await Promise.all(
+    participants.map(async (p) => {
+      const user = await User.findById(p.userId);
+      if (!user) return null;
+
+      // Find participant's rank and score from contest
+      const contestParticipation = user.contestsParticipated.find(
+        (cp: any) => cp.contestId.toString() === contestId
+      );
+
+      return {
+        userId: user._id.toString(),
+        rank: contestParticipation?.rank || 999,
+        score: contestParticipation?.score || 0,
+        currentRating: user.rating || 1000,
+        contestsParticipated: user.contestsParticipated.length,
+      };
+    })
+  );
+
+  const validParticipants = participantData.filter((p) => p !== null) as any[];
+
+  // Calculate rating changes
+  const ratingChanges = calculateContestRatings(validParticipants);
+
+  // Update each user's rating and rating history
+  const updatePromises = ratingChanges.map(async (change) => {
+    const user = await User.findById(change.userId);
+    if (!user) return null;
+
+    // Update rating
+    user.rating = change.newRating;
+    
+    // Update max rating if new rating is higher
+    if (!user.maxRating || change.newRating > user.maxRating) {
+      user.maxRating = change.newRating;
+    }
+
+    // Add to rating history
+    if (!user.ratingHistory) {
+      user.ratingHistory = [];
+    }
+    
+    user.ratingHistory.push({
+      contestId: new mongoose.Types.ObjectId(contestId),
+      oldRating: change.oldRating,
+      newRating: change.newRating,
+      ratingChange: change.ratingChange,
+      rank: change.rank,
+      timestamp: new Date(),
+    } as any);
+
+    await user.save();
+    return change;
+  });
+
+  await Promise.all(updatePromises);
+
+  // After updating all ratings, recalculate global ranks
+  await recalculateGlobalRanks();
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      { ratingChanges, participantsUpdated: ratingChanges.length },
+      "Contest ratings updated successfully"
+    )
+  );
+});
+
+/**
+ * Recalculate global ranks for all users based on their current ratings
+ * Users with ratings are ranked first, then users by problems solved
+ */
+const recalculateGlobalRanks = async (): Promise<void> => {
+  // Get all users with ratings, sorted by rating (descending)
+  const ratedUsers = await User.find({ 
+    role: "participant",
+    rating: { $exists: true, $gt: 0 }
+  })
+    .sort({ rating: -1, maxRating: -1 })
+    .select("_id rating");
+
+  // Get all users without ratings, sorted by problems solved (descending)
+  const unratedUsers = await User.find({ 
+    role: "participant",
+    $or: [
+      { rating: { $exists: false } },
+      { rating: 0 },
+      { rating: null }
+    ]
+  })
+    .select("_id solvedProblems");
+
+  // Sort unrated users by number of problems solved
+  const sortedUnratedUsers = unratedUsers.sort((a, b) => {
+    const aSolved = a.solvedProblems?.length || 0;
+    const bSolved = b.solvedProblems?.length || 0;
+    return bSolved - aSolved;
+  });
+
+  // Assign ranks - rated users first, then unrated users
+  let rank = 1;
+  
+  for (const user of ratedUsers) {
+    await User.findByIdAndUpdate(user._id, { globalRank: rank });
+    rank++;
+  }
+  
+  for (const user of sortedUnratedUsers) {
+    await User.findByIdAndUpdate(user._id, { globalRank: rank });
+    rank++;
+  }
+};
+
+/**
+ * Get global leaderboard (top ranked users)
+ */
+const getGlobalLeaderboard = asyncHandler(async (req: Request, res: Response) => {
+  const limit = parseInt(req.query.limit as string) || 100;
+  const page = parseInt(req.query.page as string) || 1;
+  const skip = (page - 1) * limit;
+
+  const users = await User.find({ role: "participant" })
+    .sort({ rating: -1, maxRating: -1 })
+    .select("username profilePicture rating maxRating globalRank contestsParticipated profile.country")
+    .skip(skip)
+    .limit(limit);
+
+  const totalUsers = await User.countDocuments({ role: "participant" });
+
+  const leaderboard = users.map((user, index) => {
+    const ratingTier = getRatingTier(user.rating || 1000);
+    return {
+      rank: skip + index + 1,
+      username: user.username,
+      profilePicture: user.profilePicture,
+      rating: user.rating || 1000,
+      maxRating: user.maxRating || 1000,
+      country: user.profile?.country,
+      contestsParticipated: user.contestsParticipated.length,
+      tier: ratingTier.tier,
+      tierColor: ratingTier.color,
+    };
+  });
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        leaderboard,
+        pagination: {
+          page,
+          limit,
+          totalUsers,
+          totalPages: Math.ceil(totalUsers / limit),
+        },
+      },
+      "Global leaderboard fetched successfully"
+    )
+  );
+});
+
+// Initialize ratings for all past contests
+const initializeAllRatings = asyncHandler(async (req: Request, res: Response) => {
+  const userId = req.user?._id;
+  const user = await User.findById(userId);
+
+  if (!user || user.role !== "admin") {
+    throw new ApiError(403, "You are not authorized to perform this action");
+  }
+
+  // Get all past contests
+  const pastContests = await Contest.find({
+    endTime: { $lt: new Date() }
+  }).select('_id title endTime');
+
+  const results = [];
+
+  for (const contest of pastContests) {
+    try {
+      // Fetch participants with their scores
+      const participants = await User.find({
+        'contestsParticipated.contestId': contest._id
+      }).select('_id username rating contestsParticipated');
+
+      // Get participants for this specific contest
+      const contestParticipants = participants.map(user => {
+        const contestData = user.contestsParticipated.find(
+          (c: any) => c.contestId.toString() === contest._id.toString()
+        );
+        return {
+          userId: user._id,
+          username: user.username,
+          currentRating: user.rating || 1000,
+          rank: contestData?.rank || 999,
+          score: contestData?.score || 0
+        };
+      }).filter(p => p.rank !== 999); // Only include users who actually participated
+
+      if (contestParticipants.length > 0) {
+        // Calculate ratings
+        const ratingChanges = calculateContestRatings(contestParticipants);
+
+        // Update each user's rating
+        for (const change of ratingChanges) {
+          const user = await User.findById(change.userId);
+          if (user) {
+            user.rating = change.newRating;
+            
+            // Update max rating
+            if (!user.maxRating || change.newRating > user.maxRating) {
+              user.maxRating = change.newRating;
+            }
+
+            // Add to rating history if not already present
+            const historyExists = user.ratingHistory?.some(
+              (h: any) => h.contestId.toString() === contest._id.toString()
+            );
+
+            if (!historyExists) {
+              if (!user.ratingHistory) {
+                user.ratingHistory = [];
+              }
+              user.ratingHistory.push({
+                contestId: contest._id,
+                oldRating: change.oldRating,
+                newRating: change.newRating,
+                ratingChange: change.ratingChange,
+                rank: change.rank,
+                timestamp: contest.endTime
+              });
+            }
+
+            await user.save();
+          }
+        }
+
+        results.push({
+          contestId: contest._id,
+          contestTitle: contest.title,
+          participantsUpdated: ratingChanges.length
+        });
+      }
+    } catch (err) {
+      console.error(`Error processing contest ${contest._id}:`, err);
+      results.push({
+        contestId: contest._id,
+        contestTitle: contest.title,
+        error: err instanceof Error ? err.message : 'Unknown error'
+      });
+    }
+  }
+
+  // Recalculate global ranks
+  await recalculateGlobalRanks();
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        contestsProcessed: results.length,
+        results
+      },
+      "Ratings initialized for all past contests"
+    )
+  );
+});
+
+// Recalculate global ranks endpoint
+const recalculateRanks = asyncHandler(async (req: Request, res: Response) => {
+  await recalculateGlobalRanks();
+
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {},
+      "Global ranks recalculated successfully"
+    )
+  );
+});
+
 // Update the export statement
 export { 
   createContest, 
@@ -1331,5 +1643,9 @@ export {
   getContestParticipants,
   getUserSubmissions,
   getAllContestSubmissions,
-  updateContestBackground 
+  updateContestBackground,
+  updateContestRatings,
+  getGlobalLeaderboard,
+  initializeAllRatings,
+  recalculateRanks
 };

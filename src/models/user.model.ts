@@ -68,6 +68,24 @@ const userSchema = new Schema<IUser>(
       type: Number,
       default: 1000,
     },
+    globalRank: {
+      type: Number,
+      default: null,
+    },
+    maxRating: {
+      type: Number,
+      default: 1000,
+    },
+    ratingHistory: [
+      {
+        contestId: { type: Schema.Types.ObjectId, ref: "Contest" },
+        oldRating: Number,
+        newRating: Number,
+        ratingChange: Number,
+        rank: Number,
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
     contestsParticipated: [
       {
         contestId: { type: Schema.Types.ObjectId, ref: "Contest" },
