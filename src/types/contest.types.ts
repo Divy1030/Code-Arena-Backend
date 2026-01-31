@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 export interface IParticipant {
     userId: mongoose.Types.ObjectId;
     joinedAt: Date;
+    totalScore?: number;
+    problemsSolved?: number;
 }
 
 export interface IContest extends mongoose.Document {

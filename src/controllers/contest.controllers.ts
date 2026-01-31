@@ -1350,7 +1350,7 @@ const updateContestRatings = asyncHandler(async (req: Request, res: Response) =>
       );
 
       return {
-        userId: user._id.toString(),
+        userId: (user._id as mongoose.Types.ObjectId).toString(),
         rank: contestParticipation?.rank || 999,
         score: contestParticipation?.score || 0,
         currentRating: user.rating || 1000,
@@ -1522,20 +1522,21 @@ const initializeAllRatings = asyncHandler(async (req: Request, res: Response) =>
     try {
       // Fetch participants with their scores
       const participants = await User.find({
-        'contestsParticipated.contestId': contest._id
+        'contestsParticipated.contestId': contest._id as mongoose.Types.ObjectId
       }).select('_id username rating contestsParticipated');
 
       // Get participants for this specific contest
       const contestParticipants = participants.map(user => {
         const contestData = user.contestsParticipated.find(
-          (c: any) => c.contestId.toString() === contest._id.toString()
+          (c: any) => c.contestId.toString() === (contest._id as mongoose.Types.ObjectId).toString()
         );
         return {
-          userId: user._id,
+          userId: (user._id as mongoose.Types.ObjectId).toString(),
           username: user.username,
           currentRating: user.rating || 1000,
           rank: contestData?.rank || 999,
-          score: contestData?.score || 0
+          score: contestData?.score || 0,
+          contestsParticipated: user.contestsParticipated.length
         };
       }).filter(p => p.rank !== 999); // Only include users who actually participated
 
@@ -1556,7 +1557,7 @@ const initializeAllRatings = asyncHandler(async (req: Request, res: Response) =>
 
             // Add to rating history if not already present
             const historyExists = user.ratingHistory?.some(
-              (h: any) => h.contestId.toString() === contest._id.toString()
+              (h: any) => h.contestId.toString() === (contest._id as mongoose.Types.ObjectId).toString()
             );
 
             if (!historyExists) {
@@ -1564,7 +1565,7 @@ const initializeAllRatings = asyncHandler(async (req: Request, res: Response) =>
                 user.ratingHistory = [];
               }
               user.ratingHistory.push({
-                contestId: contest._id,
+                contestId: contest._id as mongoose.Types.ObjectId,
                 oldRating: change.oldRating,
                 newRating: change.newRating,
                 ratingChange: change.ratingChange,
