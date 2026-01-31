@@ -41,13 +41,20 @@ const submitSolution = asyncHandler(
       throw new ApiError(404, "User not found");
     }
 
-    // Fix participant check
+    const currentTime = new Date();
+    const isPastContest = currentTime > contest.endTime;
+
+    // Fix participant check - allow practice mode for past contests
     const isParticipant = contest.participants.some(
       (p: any) => p.userId.toString() === userId.toString()
     );
-    if (!isParticipant) {
+    
+    // For active/upcoming contests, require participation
+    // For past contests, allow anyone to practice
+    if (!isPastContest && !isParticipant) {
       throw new ApiError(403, "User is not a participant of the contest");
     }
+    
     const {
       score,
       solutionCode,
@@ -111,49 +118,22 @@ const submitSolution = asyncHandler(
       status: solution.score >= ((solution as any).maxScore || actualMaxScore) ? 'correct' : solution.score > 0 ? 'partially correct' : 'wrong'
     });
 
-    // Add solution to contest's submissions array
-    contest.submissions = contest.submissions || [];
-    contest.submissions.push(solution._id as mongoose.Types.ObjectId);
-    await contest.save();
+    // For practice mode (past contests), don't update contest data
+    // Only update contest submissions for active/ongoing contests
+    if (!isPastContest) {
+      // Add solution to contest's submissions array
+      contest.submissions = contest.submissions || [];
+      contest.submissions.push(solution._id as mongoose.Types.ObjectId);
+      await contest.save();
 
-    console.log(`✅ Solution ${solution._id} added to contest submissions. Total submissions: ${contest.submissions.length}`);
+      console.log(`✅ Solution ${solution._id} added to contest submissions. Total submissions: ${contest.submissions.length}`);
+    } else {
+      console.log(`🏋️ Practice mode: Contest data not updated for past contest`);
+    }
 
     if (!Array.isArray(user.contestsParticipated)) {
-      throw new ApiError(400, "User contestsParticipated is not a valid array");
+      user.contestsParticipated = [];
     }
-
-    const contestEntry = user.contestsParticipated.find(
-      (c: any) => c?.contestId?.toString() === contestId
-    );
-
-    if (!contestEntry) {
-      throw new ApiError(400, "User has not participated in this contest");
-    }
-
-    // Ensure contestProblems is always an array
-    if (!Array.isArray(contestEntry.contestProblems)) {
-      contestEntry.contestProblems = [];
-    }
-
-    // Find the contestProblem entry for this problem
-    let problemEntry = contestEntry.contestProblems.find(
-      (p: any) => p && p.problemId && p.problemId.toString() === problemId
-    );
-
-    const subStatus: "correct" | "wrong" | "partially correct" =
-      score === problem.maxScore
-        ? "correct"
-        : score > 0
-          ? "partially correct"
-          : "wrong";
-
-    console.log('📝 Submission details:', {
-      problemId,
-      score,
-      maxScore: problem.maxScore,
-      subStatus,
-      isCorrect: subStatus === "correct"
-    });
 
     // Recalculate submission status with actual max score
     const actualStatus: "correct" | "wrong" | "partially correct" =
@@ -170,26 +150,58 @@ const submitSolution = asyncHandler(
       storingMaxScore: actualMaxScore
     });
 
-    if (!problemEntry) {
-      // If not present, push a new entry
-      contestEntry.contestProblems.push({
-        problemId: new mongoose.Types.ObjectId(problemId),
-        score,
-        submissionTime: new Date(),
-        submissionStatus: actualStatus,
-      });
-    } else {
-      // Update score to max of previous and new
-      problemEntry.score = Math.max(problemEntry.score || 0, score);
-      problemEntry.submissionTime = new Date();
-      problemEntry.submissionStatus = actualStatus;
-    }
+    // Update contest-specific data only for active/ongoing contests
+    if (!isPastContest && isParticipant) {
+      const contestEntry = user.contestsParticipated.find(
+        (c: any) => c?.contestId?.toString() === contestId
+      );
 
-    // Update contest score to sum of all contestProblems scores
-    contestEntry.score = contestEntry.contestProblems.reduce(
-      (acc: number, p: any) => acc + (p.score || 0),
-      0
-    );
+      if (contestEntry) {
+        // Ensure contestProblems is always an array
+        if (!Array.isArray(contestEntry.contestProblems)) {
+          contestEntry.contestProblems = [];
+        }
+
+        // Find the contestProblem entry for this problem
+        let problemEntry = contestEntry.contestProblems.find(
+          (p: any) => p && p.problemId && p.problemId.toString() === problemId
+        );
+
+        console.log('📝 Submission details:', {
+          problemId,
+          score,
+          maxScore: problem.maxScore,
+          actualStatus,
+          isCorrect: actualStatus === "correct"
+        });
+
+        if (!problemEntry) {
+          // If not present, push a new entry
+          contestEntry.contestProblems.push({
+            problemId: new mongoose.Types.ObjectId(problemId),
+            score,
+            submissionTime: new Date(),
+            submissionStatus: actualStatus,
+          });
+        } else {
+          // Update score to max of previous and new
+          problemEntry.score = Math.max(problemEntry.score || 0, score);
+          problemEntry.submissionTime = new Date();
+          problemEntry.submissionStatus = actualStatus;
+        }
+
+        // Update contest score to sum of all contestProblems scores
+        contestEntry.score = contestEntry.contestProblems.reduce(
+          (acc: number, p: any) => acc + (p.score || 0),
+          0
+        );
+
+        console.log('📊 Contest entry updated:', {
+          contestScore: contestEntry.score,
+          problemsAttempted: contestEntry.contestProblems.length
+        });
+      }
+    }
 
     // Update global solvedProblems if this is the first correct submission for this problem
     let solvedForFirstTime = false;
@@ -218,7 +230,7 @@ const submitSolution = asyncHandler(
       username: user.username,
       rating: user.rating,
       totalSolved: user.solvedProblems.length,
-      contestScore: contestEntry.score
+      isPracticeMode: isPastContest
     });
 
     await user.save();
@@ -229,12 +241,12 @@ const submitSolution = asyncHandler(
         new ApiResponse(201, { 
           user, 
           solvedForFirstTime,
+          isPracticeMode: isPastContest,
           stats: {
             rating: user.rating,
             totalSolved: user.solvedProblems.length,
-            contestScore: contestEntry.score
           }
-        }, "Solution submitted and scores updated")
+        }, isPastContest ? "Solution submitted in practice mode - rating updated" : "Solution submitted and scores updated")
       );
   }
 );
@@ -251,12 +263,21 @@ const getProblem = asyncHandler(
     if (!user) {
       throw new ApiError(404, "User not found");
     }
-    const isParticipant = contest.participants.some(
-      (p: any) => p.userId.toString() === userId.toString()
-    );
-    if (!isParticipant) {
-      throw new ApiError(403, "User is not a participant of the contest");
+    
+    const currentTime = new Date();
+    const isPastContest = currentTime > contest.endTime;
+    
+    // For past contests, allow anyone to access for practice
+    // For active/upcoming contests, verify participation
+    if (!isPastContest) {
+      const isParticipant = contest.participants.some(
+        (p: any) => p.userId.toString() === userId.toString()
+      );
+      if (!isParticipant) {
+        throw new ApiError(403, "User is not a participant of the contest");
+      }
     }
+    
     const problem = await Problem.findById(problemId);
     if (!problem) {
       throw new ApiError(404, "Problem not found");

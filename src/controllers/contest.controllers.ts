@@ -314,22 +314,22 @@ const startContest = asyncHandler(async (req: Request, res: Response) => {
     throw new ApiError(404, "Contest not found");
   }
 
-  const alreadyParticipant = contest.participants.some((p) =>
-    p.userId.equals(userId)
-  );
-  if (!alreadyParticipant) {
-    throw new ApiError(409, "You are not a participant in this contest");
-  }
-
-  // const contestExist = await Contest.findById(contestId);
-  // console.log(contestExist);
-
   const currentTime = new Date();
-  if (currentTime < contest.startTime) {
-    throw new ApiError(400, "The contest has not started yet");
-  }
-  if (currentTime > contest.endTime) {
-    throw new ApiError(400, "The contest is over");
+  const isPastContest = currentTime > contest.endTime;
+  
+  // For past contests, allow anyone to access for practice
+  // For active/upcoming contests, verify participation
+  if (!isPastContest) {
+    const alreadyParticipant = contest.participants.some((p) =>
+      p.userId.equals(userId)
+    );
+    if (!alreadyParticipant) {
+      throw new ApiError(409, "You are not a participant in this contest");
+    }
+
+    if (currentTime < contest.startTime) {
+      throw new ApiError(400, "The contest has not started yet");
+    }
   }
   
 
