@@ -297,7 +297,7 @@ const getLeaderboard = asyncHandler(
     const users = await User.find({
       _id: { $in: participantIds },
       "contestsParticipated.contestId": contestId,
-    }).select("username profilePicture contestsParticipated");
+    }).select("username profilePicture profile.avatarUrl contestsParticipated");
 
     // Build leaderboard data
     const leaderboard = users
@@ -319,7 +319,7 @@ const getLeaderboard = asyncHandler(
         return {
           userId: user._id,
           username: user.username,
-          profilePicture: user.profilePicture,
+          profilePicture: user.profilePicture || user.profile?.avatarUrl || null,
           score,
           problemsSolved,
         };
