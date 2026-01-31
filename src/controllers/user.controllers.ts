@@ -1162,6 +1162,76 @@ const getUserById = asyncHandler(async (req: Request, res: Response) => {
   );
 });
 
+// Get user statistics including language usage and rating history
+const getUserStats = asyncHandler(async (req: Request, res: Response) => {
+  const userId = (req as any).user._id;
+
+  // Import Solution and Problem models
+  const Solution = (await import("../models/solution.model.js")).default;
+  const Problem = (await import("../models/problem.model.js")).default;
+
+  // Get all solutions for the user
+  const solutions = await Solution.find({ userId }).select('languageUsed score createdAt contestId');
+
+  // Calculate language usage
+  const languageStats: { [key: string]: number } = {};
+  solutions.forEach(solution => {
+    const lang = solution.languageUsed || 'Unknown';
+    languageStats[lang] = (languageStats[lang] || 0) + 1;
+  });
+
+  // Get user's contest participation with rating history
+  const user = await User.findById(userId)
+    .populate({
+      path: 'contestsParticipated.contestId',
+      select: 'title startTime endTime'
+    })
+    .select('contestsParticipated rating solvedProblems');
+
+  // Build rating history from contests
+  const ratingHistory = user?.contestsParticipated?.map((contest: any) => ({
+    contestTitle: contest.contestId?.title || 'Unknown Contest',
+    date: contest.joinedAt || contest.contestId?.endTime,
+    score: contest.score || 0,
+    rank: contest.rank
+  })).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()) || [];
+
+  // Get recent solved problems with full details including problem info
+  const recentSolvedProblems = await Promise.all(
+    (user?.solvedProblems || []).slice(0, 10).map(async (sp: any) => {
+      const solution = await Solution.findOne({ 
+        userId, 
+        problemId: sp.problemId 
+      }).sort({ createdAt: -1 }).limit(1);
+      
+      const problem = await Problem.findById(sp.problemId).select('title difficulty');
+      
+      return {
+        problemId: sp.problemId,
+        contestId: solution?.contestId,
+        problemTitle: problem?.title || 'Unknown Problem',
+        difficulty: problem?.difficulty || 'Medium',
+        solvedAt: sp.solvedAt,
+        score: solution?.score,
+        languageUsed: solution?.languageUsed
+      };
+    })
+  );
+
+  const stats = {
+    languageUsage: languageStats,
+    ratingHistory,
+    totalSolutions: solutions.length,
+    totalSolved: user?.solvedProblems?.length || 0,
+    currentRating: user?.rating || 0,
+    recentSolvedProblems
+  };
+
+  res.status(200).json(
+    new ApiResponse(200, stats, "User statistics retrieved successfully")
+  );
+});
+
 export {
   registerUser,
   loginUser,
@@ -1181,5 +1251,6 @@ export {
   searchFriendByName,
   suggestedUsersToFollow,
   getProfileOfUser,
-  createPasswordForGoogleUser, // Add this new export
+  createPasswordForGoogleUser,
+  getUserStats,
 };

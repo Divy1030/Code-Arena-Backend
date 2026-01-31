@@ -18,7 +18,8 @@ import {
   suggestedUsersToFollow,
   getProfileOfUser,
   createPasswordForGoogleUser,
-  changePassword, // Add this import
+  changePassword,
+  getUserStats,
 } from "../controllers/user.controllers.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import {
@@ -42,6 +43,7 @@ router.route("/google").post(googleLogin);
 router.route("/logout").post(verifyJWT, logoutUser);
 router.route("/refresh-token").post(refreshAccessToken);
 router.route("/get-user-data").get(verifyJWT, getUserData);
+router.route("/stats").get(verifyJWT, getUserStats);
 router.route("/change-password").post(verifyJWT, changePassword); // Add this route
 router.get("/manageable-contests", verifyJWT, getManageableContests);
 router
