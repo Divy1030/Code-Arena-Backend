@@ -119,6 +119,14 @@ const submitSolution = asyncHandler(
           ? "partially correct"
           : "wrong";
 
+    console.log('📝 Submission details:', {
+      problemId,
+      score,
+      maxScore: problem.maxScore,
+      subStatus,
+      isCorrect: subStatus === "correct"
+    });
+
     if (!problemEntry) {
       // If not present, push a new entry
       contestEntry.contestProblems.push({
