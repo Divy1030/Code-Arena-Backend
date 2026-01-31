@@ -19,6 +19,7 @@ import {
   deleteModerator,
   getContestParticipants,
   getUserSubmissions,
+  getAllContestSubmissions,
   updateContestBackground
 } from "../controllers/contest.controllers.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
@@ -55,6 +56,9 @@ router.route('/:contestId/participants').get(verifyJWT, getContestParticipants);
 
 // Add route for getting user's submissions
 router.route('/:contestId/submissions').get(verifyJWT, getUserSubmissions);
+
+// Add route for getting all contest submissions (all users)
+router.route('/:contestId/all-submissions').get(verifyJWT, getAllContestSubmissions);
 
 // Add the new route for updating contest background
 router.route('/background/:contestId')

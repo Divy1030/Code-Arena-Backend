@@ -1162,6 +1162,59 @@ const getUserSubmissions = asyncHandler(async (req: Request, res: Response) => {
   );
 });
 
+// Get all submissions from all users in a contest (Admin/Moderator)
+const getAllContestSubmissions = asyncHandler(async (req: Request, res: Response) => {
+  const { contestId } = req.params;
+  
+  console.log('🔍 getAllContestSubmissions called for contestId:', contestId);
+  
+  if (!mongoose.isValidObjectId(contestId)) {
+    throw new ApiError(400, "Invalid Contest ID format");
+  }
+  
+  // Verify if contest exists
+  const contest = await Contest.findById(contestId);
+  if (!contest) {
+    throw new ApiError(404, "Contest not found");
+  }
+  
+  console.log('🏆 Fetching all submissions for contest:', contest.title);
+  
+  // Get all submissions for this contest from all users
+  const submissions = await Solution.find({
+    contestId: contestId
+  })
+  .populate('userId', 'username email profile')
+  .populate('problemId', 'title difficulty')
+  .sort({ createdAt: -1 }); // Most recent first
+  
+  console.log(`📋 Found ${submissions.length} total submissions from all users`);
+  
+  // Map submissions to include all data
+  const formattedSubmissions = submissions.map((sub) => {
+    const maxScore = (sub as any).maxScore || 100;
+    const status = sub.score >= maxScore ? 'correct' : sub.score > 0 ? 'partially correct' : 'wrong';
+    
+    return {
+      _id: sub._id,
+      userId: sub.userId,
+      problemId: sub.problemId,
+      score: sub.score,
+      maxScore: maxScore,
+      solutionCode: sub.solutionCode,
+      languageUsed: sub.languageUsed,
+      timeOccupied: sub.timeOccupied,
+      memoryOccupied: sub.memoryOccupied,
+      submittedAt: sub.createdAt,
+      status: status
+    };
+  });
+  
+  res.status(200).json(
+    new ApiResponse(200, formattedSubmissions, "All contest submissions fetched successfully")
+  );
+});
+
 const updateContestBackground = asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?._id;
   
@@ -1274,5 +1327,6 @@ export {
   deleteProblem,
   getContestParticipants,
   getUserSubmissions,
+  getAllContestSubmissions,
   updateContestBackground 
 };
